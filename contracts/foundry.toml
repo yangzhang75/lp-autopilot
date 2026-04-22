@@ -16,3 +16,8 @@ remappings = [
 
 [rpc_endpoints]
 arbitrum_sepolia = "${ARBITRUM_SEPOLIA_RPC_URL}"
+arbitrum_mainnet = "${ARBITRUM_MAINNET_RPC_URL}"
+
+# `FOUNDRY_PROFILE=ci` in GitHub Actions; inherits from default
+[profile.ci]
+fuzz = { runs = 256 }

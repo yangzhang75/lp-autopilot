@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { Hash } from "viem";
+import { isAddressEqual, type Hash } from "viem";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount, useChainId, usePublicClient, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
@@ -97,8 +97,11 @@ function RangeBar({
 
 export default function DashboardPage() {
   const tokenId = useTokenId();
-  const { isConnected } = useAccount();
+  const { isConnected, address } = useAccount();
   const { positionState, notDeposited, inRange, drift, isLoading, refetch: refetchPosition } = usePosition(tokenId);
+  const hasActiveNft = positionState != null && positionState.activeNftId > BigInt(0);
+  const isExited = positionState != null && !notDeposited && !hasActiveNft;
+  const inBand = hasActiveNft ? inRange : false;
   const publicClient = usePublicClient();
   const queryClient = useQueryClient();
   const chainId = useChainId();
@@ -211,14 +214,28 @@ export default function DashboardPage() {
   }, [hash, isSuccess, receipt, refetchPosition, queryClient, tokenId]);
 
   const onRebalance = useCallback(() => {
-    if (tokenId === undefined || inRange) return;
+    if (tokenId === undefined || inRange || !hasActiveNft) return;
     writeContract({
       address: lpAutopilotAddress,
       abi: lpAutopilotAbi,
       functionName: "checkAndRebalance",
       args: [tokenId],
     });
-  }, [tokenId, inRange, writeContract]);
+  }, [tokenId, inRange, hasActiveNft, writeContract]);
+
+  const onWithdraw = useCallback(() => {
+    if (tokenId === undefined) return;
+    writeContract({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      functionName: "withdraw",
+      args: [tokenId],
+    });
+  }, [tokenId, writeContract]);
+
+  const isOwner = Boolean(
+    address && positionState && isAddressEqual(address, positionState.owner),
+  );
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -272,10 +289,23 @@ export default function DashboardPage() {
 
         {positionState && !notDeposited && (
           <>
+            {isExited && (
+              <div className="max-w-2xl rounded-sm border border-amber-800/50 bg-amber-950/30 px-3 py-2 font-mono text-xs text-amber-100/90">
+                V1 exit: liquidity was removed and the NFT was burned. Pending token0/token1 in the contract. Withdraw to
+                return any remaining ERC20s (this position key no longer has an active LP NFT in Autopilot).
+                {positionState.pending0 + positionState.pending1 > BigInt(0) ? (
+                  <span className="mt-1 block text-[10px] text-amber-200/80">
+                    Pending (raw): {positionState.pending0.toString()} (t0) · {positionState.pending1.toString()} (t1)
+                  </span>
+                ) : null}
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               <div className="border border-[#262626] bg-[#111] p-2">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Status</p>
-                {inRange ? (
+                {isExited ? (
+                  <p className="mt-0.5 font-mono text-lg text-amber-200/90">EXITED (v1)</p>
+                ) : inRange ? (
                   <p className="mt-0.5 font-mono text-lg text-[#00ff88]">IN RANGE</p>
                 ) : (
                   <p className="mt-0.5 font-mono text-lg text-red-400/90">OUT OF RANGE</p>
@@ -308,6 +338,9 @@ export default function DashboardPage() {
                     Partial/unknown leg (token not ETH/stable heuristic)
                   </p>
                 )}
+                {!evLoading && (
+                  <p className="mt-0.5 text-[9px] text-amber-200/80">USD uses a fixed $3,500 ETH heuristic (demo).</p>
+                )}
               </div>
             </div>
 
@@ -320,19 +353,31 @@ export default function DashboardPage() {
                 center={positionState.centerTick}
                 current={positionState.currentTick}
                 range={positionState.rangeTicks}
-                inRange={inRange}
+                inRange={inBand}
               />
               <div className="flex flex-col justify-end gap-1">
-                <p className="text-[10px] font-mono text-[#666]">Rebalance</p>
+                <p className="text-[10px] font-mono text-[#666]">Rebalance (v1 = exit to ERC20s)</p>
                 <Button
                   type="button"
                   className="h-8 w-full max-w-xs font-mono text-xs"
-                  disabled={!isAutopilotConfigured || wrongNetwork || inRange || busy || !isConnected}
+                  disabled={
+                    !isAutopilotConfigured || wrongNetwork || inRange || !hasActiveNft || busy || !isConnected
+                  }
                   onClick={onRebalance}
                 >
                   {busy ? "Transaction…" : "Rebalance now"}
                 </Button>
-                <p className="text-[10px] text-[#666]">Anyone can call this. You pay gas.</p>
+                <p className="text-[10px] text-[#666]">Only when out of band. Anyone can call; you pay gas.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 w-full max-w-xs font-mono text-xs"
+                  disabled={!isAutopilotConfigured || wrongNetwork || busy || !isConnected || !isOwner}
+                  onClick={onWithdraw}
+                >
+                  {busy ? "Transaction…" : "Withdraw position"}
+                </Button>
+                <p className="text-[10px] text-[#666]">Returns the NFT (if any) and pending ERC20s to your wallet.</p>
                 {displayTxError && (
                   <p className="whitespace-pre-wrap break-words font-mono text-[10px] text-red-400/90">
                     {formatTxError(displayTxError)}
@@ -374,7 +419,11 @@ export default function DashboardPage() {
                             {new Date(e.blockTimestamp * 1000).toLocaleString()}
                           </td>
                           <td className="whitespace-nowrap py-1 pr-3 text-[#ededed]">
-                            {e.kind === "deposited" ? "PositionDeposited" : "RebalanceTriggered"}
+                            {e.kind === "deposited"
+                              ? "PositionDeposited"
+                              : e.kind === "rebalanced"
+                                ? "RebalanceTriggered"
+                                : "PositionWithdrawn"}
                           </td>
                           <td className="py-1 text-right text-[#888]">
                             <a

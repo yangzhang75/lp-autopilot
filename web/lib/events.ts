@@ -1,14 +1,14 @@
 import type { PublicClient, Hash } from "viem";
 import { lpAutopilotAbi, lpAutopilotAddress } from "@/lib/contract";
-import { ONCHAIN_POLL_MS } from "@/lib/addresses";
+import { ONCHAIN_POLL_MS, lpAutopilotFromBlock } from "@/lib/addresses";
 
 export type PositionEventRow = {
-  kind: "deposited" | "rebalanced";
+  kind: "deposited" | "rebalanced" | "withdrawn";
   logIndex: number;
   blockNumber: bigint;
   blockTimestamp: number;
   transactionHash: Hash;
-  details: { rangeTicks?: number; oldCenter?: number; newCenter?: number; fee0?: string; fee1?: string };
+  details: { rangeTicks?: number; oldCenter?: number; newCenter?: number; fee0?: string; fee1?: string; owner?: string };
 };
 
 export { ONCHAIN_POLL_MS as positionEventsRefetchInterval };
@@ -25,13 +25,14 @@ export async function getPositionEvents(
   publicClient: PublicClient,
   tokenId: bigint,
 ): Promise<PositionEventRow[]> {
-  const [deposits, rebalances] = await Promise.all([
+  const fromBlock = lpAutopilotFromBlock;
+  const [deposits, rebalances, withdrawals] = await Promise.all([
     publicClient.getContractEvents({
       address: lpAutopilotAddress,
       abi: lpAutopilotAbi,
       eventName: "PositionDeposited",
       args: { tokenId },
-      fromBlock: BigInt(0),
+      fromBlock,
       toBlock: "latest",
     }),
     publicClient.getContractEvents({
@@ -39,7 +40,15 @@ export async function getPositionEvents(
       abi: lpAutopilotAbi,
       eventName: "RebalanceTriggered",
       args: { positionKey: tokenId },
-      fromBlock: BigInt(0),
+      fromBlock,
+      toBlock: "latest",
+    }),
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "PositionWithdrawn",
+      args: { tokenId },
+      fromBlock,
       toBlock: "latest",
     }),
   ]);
@@ -50,6 +59,9 @@ export async function getPositionEvents(
     if (l.blockNumber) needed.add(l.blockNumber);
   }
   for (const l of rebalances) {
+    if (l.blockNumber) needed.add(l.blockNumber);
+  }
+  for (const l of withdrawals) {
     if (l.blockNumber) needed.add(l.blockNumber);
   }
 
@@ -98,6 +110,18 @@ export async function getPositionEvents(
       },
     });
   }
+  for (const l of withdrawals) {
+    if (!l.blockNumber || !l.args || l.transactionHash == null) continue;
+    const a = l.args as { owner: `0x${string}` };
+    out.push({
+      kind: "withdrawn",
+      logIndex: Number(l.logIndex ?? 0),
+      blockNumber: l.blockNumber,
+      blockTimestamp: cache.get(l.blockNumber) ?? 0,
+      transactionHash: l.transactionHash,
+      details: { owner: a.owner },
+    });
+  }
 
   out.sort((a, b) => {
     if (a.blockNumber !== b.blockNumber) {
@@ -111,11 +135,12 @@ export async function getPositionEvents(
 export type AutopilotGlobalStats = {
   positionDeposits: number;
   rebalances: number;
+  withdrawals: number;
 };
 
 export async function getAutopilotGlobalStats(publicClient: PublicClient): Promise<AutopilotGlobalStats> {
-  const fromBlock = BigInt(0);
-  const [deposits, rebalances] = await Promise.all([
+  const fromBlock = lpAutopilotFromBlock;
+  const [deposits, rebalances, wds] = await Promise.all([
     publicClient.getContractEvents({
       address: lpAutopilotAddress,
       abi: lpAutopilotAbi,
@@ -130,6 +155,13 @@ export async function getAutopilotGlobalStats(publicClient: PublicClient): Promi
       fromBlock,
       toBlock: "latest",
     }),
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "PositionWithdrawn",
+      fromBlock,
+      toBlock: "latest",
+    }),
   ]);
-  return { positionDeposits: deposits.length, rebalances: rebalances.length };
+  return { positionDeposits: deposits.length, rebalances: rebalances.length, withdrawals: wds.length };
 }
