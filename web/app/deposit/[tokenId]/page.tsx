@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useAccount, useChainId, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useChainId, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import type { Hash } from "viem";
 import { isAddressEqual } from "viem";
@@ -19,6 +19,9 @@ import { formatFeeTier } from "@/lib/uniswap-math";
 import { erc20SymbolDecimalsAbi } from "@/lib/abis/erc20";
 import { useReadContracts } from "wagmi";
 import { readNpmPositionTuple } from "@/lib/read-npm-position";
+import { formatTxError } from "@/lib/tx-error";
+import { WalletCta } from "@/components/wallet-cta";
+import { WrongNetworkBanner } from "@/components/wrong-network-banner";
 
 // shared tuple reader — inline minimal import
 function useParseTokenId() {
@@ -38,7 +41,6 @@ export default function DepositPage() {
   const tokenId = useParseTokenId();
   const { address, isConnected } = useAccount();
   const chainId = useChainId();
-  const { switchChain, isPending: isSwitching } = useSwitchChain();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [rangeStr, setRangeStr] = useState("600");
@@ -113,7 +115,14 @@ export default function DepositPage() {
   }, [rangeStr]);
 
   const { writeContract, data: hash, error: writeError, isPending, reset } = useWriteContract();
-  const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash: hash as Hash | undefined });
+  const {
+    isLoading: isConfirming,
+    data: receipt,
+    isError: isWaitError,
+    error: waitError,
+  } = useWaitForTransactionReceipt({ hash: hash as Hash | undefined });
+  const displayTxError = writeError ?? (isWaitError && waitError ? waitError : null);
+  const reverted = receipt?.status === "reverted";
 
   const refetchApproval = useCallback(async () => {
     await Promise.all([refetchA(), refetchB(), queryClient.invalidateQueries({ queryKey: ["npm-positions", address] })]);
@@ -159,7 +168,7 @@ export default function DepositPage() {
     });
   };
 
-  const wrongNetwork = chainId !== arbitrumSepolia.id;
+  const wrongNetwork = isConnected && chainId !== arbitrumSepolia.id;
   const ownerOk = owner && address && isAddressEqual(owner, address);
   const busy = isPending || isConfirming;
 
@@ -167,6 +176,7 @@ export default function DepositPage() {
     <div className="flex min-h-screen flex-col">
       <AppHeader />
       <main className="flex-1 p-3">
+        <WrongNetworkBanner />
         <h1 className="mb-3 font-mono text-sm text-[#a3a3a3]">Deposit position</h1>
         {!isAutopilotConfigured && (
           <p className="mb-2 font-mono text-xs text-amber-200/90">
@@ -175,20 +185,6 @@ export default function DepositPage() {
         )}
         {tokenId === undefined && (
           <p className="font-mono text-xs text-red-400">Invalid position id in URL.</p>
-        )}
-        {isConnected && wrongNetwork && (
-          <div className="mb-3 space-y-2">
-            <p className="font-mono text-xs text-[#a3a3a3]">Switch network to Arbitrum Sepolia.</p>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => switchChain({ chainId: arbitrumSepolia.id })}
-              disabled={isSwitching}
-              className="h-7 font-mono text-xs"
-            >
-              {isSwitching ? "Switching…" : "Switch network"}
-            </Button>
-          </div>
         )}
         {isConnected && tokenId !== undefined && owner != null && !ownerOk && (
           <p className="font-mono text-xs text-red-400">
@@ -271,16 +267,22 @@ export default function DepositPage() {
             {isConfirming && (
               <div className="h-1 w-full max-w-sm animate-pulse rounded-sm bg-[#262626]" title="Transaction confirming" />
             )}
-            {writeError && (
-              <p className="whitespace-pre-wrap break-all font-mono text-xs text-red-400/90">
-                {writeError.message}
+            {displayTxError && (
+              <p className="whitespace-pre-wrap break-words font-mono text-xs text-red-400/90">
+                {formatTxError(displayTxError)}
               </p>
+            )}
+            {reverted && !displayTxError && (
+              <p className="font-mono text-xs text-red-400/90">Transaction reverted on chain.</p>
             )}
           </div>
         )}
 
         {!isConnected && (
-          <p className="font-mono text-sm text-[#666]">Connect your wallet to continue.</p>
+          <WalletCta
+            title="Wallet not connected"
+            body="Connect a wallet on Arbitrum Sepolia, then you can approve and deposit your position NFT into Autopilot."
+          />
         )}
       </main>
     </div>
