@@ -5,13 +5,18 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { Hash } from "viem";
-import { useAccount, useChainId, usePublicClient, useReadContracts, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { useAccount, useChainId, usePublicClient, useReadContracts, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { AppHeader } from "@/components/app-header";
 import { Button } from "@/components/ui/button";
+import { DashboardFeeChart } from "@/components/dashboard-fee-chart";
+import { WrongNetworkBanner } from "@/components/wrong-network-banner";
 import { isAutopilotConfigured, lpAutopilotAbi, lpAutopilotAddress } from "@/lib/contract";
 import { getPositionEvents, positionEventsRefetchInterval } from "@/lib/events";
+import { buildCumulativeFeeSeries } from "@/lib/fee-series";
 import { usePosition } from "@/lib/hooks/usePosition";
+import { formatTxError } from "@/lib/tx-error";
 import { erc20SymbolDecimalsAbi } from "@/lib/abis/erc20";
 import { formatPrice1Per0Label, formatTokenAmountString } from "@/lib/uniswap-math";
 import { ONCHAIN_POLL_MS } from "@/lib/addresses";
@@ -97,8 +102,7 @@ export default function DashboardPage() {
   const publicClient = usePublicClient();
   const queryClient = useQueryClient();
   const chainId = useChainId();
-  const { switchChain, isPending: isSwitching } = useSwitchChain();
-  const wrongNetwork = chainId !== arbitrumSepolia.id;
+  const wrongNetwork = isConnected && chainId !== arbitrumSepolia.id;
   const processedHash = useRef<Hash | null>(null);
 
   const t0 = positionState?.token0;
@@ -167,11 +171,32 @@ export default function DashboardPage() {
     refetchInterval: positionEventsRefetchInterval,
   });
 
+  const feeSeries = useMemo(() => {
+    if (!events || !positionState) {
+      return { points: [] as { at: number; tLabel: string; cumulativeUsd: number; stepUsd: number }[], totalFeesUsd: 0, hasPriceUnknown: true };
+    }
+    return buildCumulativeFeeSeries(
+      events,
+      dec0,
+      dec1,
+      sym0,
+      sym1,
+    );
+  }, [events, positionState, dec0, dec1, sym0, sym1]);
+
   const { writeContract, data: hash, error: writeError, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({
+  const {
+    isLoading: isConfirming,
+    isSuccess,
+    isError: isWaitError,
+    error: waitError,
+    data: receipt,
+  } = useWaitForTransactionReceipt({
     hash: hash as Hash | undefined,
   });
   const busy = isPending || isConfirming;
+  const displayTxError = writeError ?? (isWaitError && waitError ? waitError : null);
+  const reverted = receipt?.status === "reverted";
 
   useEffect(() => {
     if (!hash || !isSuccess || !receipt || receipt.status !== "success") return;
@@ -204,22 +229,20 @@ export default function DashboardPage() {
             Position
             {tokenId !== undefined ? <span className="ml-1.5 text-[#ededed]">#{tokenId.toString()}</span> : null}
           </h1>
-          {isConnected && wrongNetwork && (
-            <Button
-              type="button"
-              size="sm"
-              className="h-6 font-mono text-[10px]"
-              onClick={() => switchChain({ chainId: arbitrumSepolia.id })}
-              disabled={isSwitching}
-            >
-              {isSwitching ? "Switching…" : "Arbitrum Sepolia"}
-            </Button>
-          )}
         </div>
         <p className="mt-0.5 font-mono text-[10px] text-[#555]">Auto refresh every {ONCHAIN_POLL_MS / 1000}s</p>
       </div>
 
       <main className="flex-1 space-y-3 p-3">
+        <WrongNetworkBanner />
+        {!isConnected && positionState && !notDeposited && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-[#333] bg-[#111] px-3 py-2">
+            <p className="font-mono text-xs text-[#a3a3a3]">
+              You are viewing public onchain data. Connect a wallet to sign transactions.
+            </p>
+            <ConnectButton />
+          </div>
+        )}
         {!isAutopilotConfigured && (
           <p className="font-mono text-xs text-amber-200/90">
             Set <span className="text-[#ededed]">NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS</span> in the web env.
@@ -229,8 +252,8 @@ export default function DashboardPage() {
         {tokenId === undefined && <p className="font-mono text-xs text-red-400/90">Invalid id.</p>}
 
         {isLoading && tokenId !== undefined && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-16 rounded-sm border border-[#262626] bg-[#111] animate-pulse" />
             ))}
           </div>
@@ -249,7 +272,7 @@ export default function DashboardPage() {
 
         {positionState && !notDeposited && (
           <>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
               <div className="border border-[#262626] bg-[#111] p-2">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Status</p>
                 {inRange ? (
@@ -275,6 +298,21 @@ export default function DashboardPage() {
                 </p>
                 <p className="mt-0.5 text-[10px] text-[#666]">from center, price</p>
               </div>
+              <div className="border border-[#262626] bg-[#111] p-2 text-right sm:col-span-2 lg:col-span-1">
+                <p className="text-[10px] font-mono uppercase text-[#666]">Total fees earned (est. USD)</p>
+                <p className="mt-0.5 font-mono text-lg text-[#ededed] tabular-nums">
+                  {evLoading ? "—" : "$" + feeSeries.totalFeesUsd.toFixed(2)}
+                </p>
+                {feeSeries.hasPriceUnknown && !evLoading && (
+                  <p className="mt-0.5 text-[9px] text-amber-200/80" title="Unknown token: fee leg omitted.">
+                    Partial/unknown leg (token not ETH/stable heuristic)
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="border-t border-[#262626] pt-3">
+              <DashboardFeeChart points={feeSeries.points} loading={evLoading} />
             </div>
 
             <div className="grid gap-3 border-t border-[#262626] pt-3 md:grid-cols-2">
@@ -289,13 +327,20 @@ export default function DashboardPage() {
                 <Button
                   type="button"
                   className="h-8 w-full max-w-xs font-mono text-xs"
-                  disabled={!isAutopilotConfigured || wrongNetwork || inRange || busy}
+                  disabled={!isAutopilotConfigured || wrongNetwork || inRange || busy || !isConnected}
                   onClick={onRebalance}
                 >
                   {busy ? "Transaction…" : "Rebalance now"}
                 </Button>
                 <p className="text-[10px] text-[#666]">Anyone can call this. You pay gas.</p>
-                {writeError && <p className="text-[10px] text-red-400/90 break-all">{writeError.message}</p>}
+                {displayTxError && (
+                  <p className="whitespace-pre-wrap break-words font-mono text-[10px] text-red-400/90">
+                    {formatTxError(displayTxError)}
+                  </p>
+                )}
+                {reverted && !displayTxError && (
+                  <p className="font-mono text-[10px] text-red-400/90">Transaction reverted on chain.</p>
+                )}
               </div>
             </div>
 

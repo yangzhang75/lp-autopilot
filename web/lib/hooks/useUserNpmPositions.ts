@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useAccount, usePublicClient } from "wagmi";
+import { useAccount, useChainId, usePublicClient } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
 import type { Address } from "viem";
 import { ARBITRUM_SEPOLIA_NPM, ONCHAIN_POLL_MS } from "@/lib/addresses";
 import { nonfungiblePositionManagerAbi } from "@/lib/abis/positionManager";
@@ -24,10 +25,12 @@ export type NpmPositionCard = {
 
 export function useUserNpmPositions() {
   const { address, isConnected } = useAccount();
+  const chainId = useChainId();
   const publicClient = usePublicClient();
+  const onArbSepolia = chainId === arbitrumSepolia.id;
 
   return useQuery({
-    queryKey: ["npm-positions", address],
+    queryKey: ["npm-positions", address, chainId],
     queryFn: async () => {
       if (!publicClient || !address) return [] as NpmPositionCard[];
       const balance = await publicClient.readContract({
@@ -91,7 +94,7 @@ export function useUserNpmPositions() {
         symbol1: sym.get(p.token1) ?? "?",
       }));
     },
-    enabled: Boolean(publicClient && address && isConnected),
+    enabled: Boolean(publicClient && address && isConnected && onArbSepolia),
     refetchInterval: ONCHAIN_POLL_MS,
   });
 }

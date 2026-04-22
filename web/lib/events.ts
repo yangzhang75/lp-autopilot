@@ -107,3 +107,29 @@ export async function getPositionEvents(
   });
   return out;
 }
+
+export type AutopilotGlobalStats = {
+  positionDeposits: number;
+  rebalances: number;
+};
+
+export async function getAutopilotGlobalStats(publicClient: PublicClient): Promise<AutopilotGlobalStats> {
+  const fromBlock = BigInt(0);
+  const [deposits, rebalances] = await Promise.all([
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "PositionDeposited",
+      fromBlock,
+      toBlock: "latest",
+    }),
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "RebalanceTriggered",
+      fromBlock,
+      toBlock: "latest",
+    }),
+  ]);
+  return { positionDeposits: deposits.length, rebalances: rebalances.length };
+}

@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { useUserNpmPositions } from "@/lib/hooks/useUserNpmPositions";
 import { isAutopilotConfigured } from "@/lib/contract";
 import { UNISWAP_ARBITRUM_SEPOLIA_APP } from "@/lib/addresses";
+import { WalletCta } from "@/components/wallet-cta";
+import { WrongNetworkBanner } from "@/components/wrong-network-banner";
 
 function SkeletonLine({ className }: { className?: string }) {
   return <div className={`h-3 animate-pulse rounded-sm bg-[#262626] ${className ?? ""}`} />;
@@ -25,14 +27,19 @@ export default function PositionsPage() {
         <h1 className="font-mono text-sm text-[#a3a3a3]">Uniswap v3 — Arbitrum Sepolia</h1>
       </div>
       <main className="flex-1 p-3">
+        <WrongNetworkBanner className="mb-3" />
         {!isAutopilotConfigured && (
           <p className="mb-3 font-mono text-xs text-amber-200/90">
             Set <span className="text-[#ededed]">NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS</span> to your
             deployed contract.
           </p>
         )}
+        {isConnecting && <p className="mb-3 font-mono text-sm text-[#888]">Connecting wallet…</p>}
         {!isConnected && !isConnecting && (
-          <p className="font-mono text-sm text-[#666]">Connect a wallet to load your position NFTs.</p>
+          <WalletCta
+            title="No wallet connected"
+            body="Connect a wallet on Arbitrum Sepolia to list your Uniswap v3 position NFTs from the NonfungiblePositionManager."
+          />
         )}
         {(isConnecting || (isConnected && isLoading)) && (
           <div className="grid gap-2 sm:grid-cols-2">
