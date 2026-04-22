@@ -1,0 +1,356 @@
+"use client";
+
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef } from "react";
+import type { Hash } from "viem";
+import { useAccount, useChainId, usePublicClient, useReadContracts, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import { AppHeader } from "@/components/app-header";
+import { Button } from "@/components/ui/button";
+import { isAutopilotConfigured, lpAutopilotAbi, lpAutopilotAddress } from "@/lib/contract";
+import { getPositionEvents, positionEventsRefetchInterval } from "@/lib/events";
+import { usePosition } from "@/lib/hooks/usePosition";
+import { erc20SymbolDecimalsAbi } from "@/lib/abis/erc20";
+import { formatPrice1Per0Label, formatTokenAmountString } from "@/lib/uniswap-math";
+import { ONCHAIN_POLL_MS } from "@/lib/addresses";
+
+const ARBISCAN = "https://sepolia.arbiscan.io";
+
+function useTokenId() {
+  const p = useParams();
+  return useMemo(() => {
+    const s = p?.tokenId;
+    if (typeof s !== "string" || !/^\d+$/.test(s)) return undefined;
+    try {
+      return BigInt(s);
+    } catch {
+      return undefined;
+    }
+  }, [p]);
+}
+
+function DriftValue({ d }: { d: number }) {
+  const s = d >= 0 ? `+${formatTokenAmountString(d)}%` : `${formatTokenAmountString(d)}%`;
+  return <span className="tabular-nums text-[#ededed]">{s}</span>;
+}
+
+function RangeBar({
+  center,
+  current,
+  range,
+  inRange,
+}: {
+  center: number;
+  current: number;
+  range: number;
+  inRange: boolean;
+}) {
+  const left = center - range;
+  const right = center + range;
+  const pad = Math.max(range, 1) * 0.2;
+  const minT = Math.min(left, current) - pad;
+  const maxT = Math.max(right, current) + pad;
+  const span = maxT - minT || 1;
+  const pL = ((left - minT) / span) * 100;
+  const pR = ((right - minT) / span) * 100;
+  const pC = ((current - minT) / span) * 100;
+  return (
+    <div className="w-full max-w-2xl">
+      <p className="mb-1 font-mono text-[10px] uppercase text-[#666]">Autopilot band (center ± range ticks)</p>
+      <div className="relative h-9 w-full overflow-hidden rounded-sm border border-[#262626]">
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(90deg, rgba(180,30,30,0.4) 0% ${pL}%, rgba(0,0,0,0) ${pL}%, rgba(0,0,0,0) ${pR}%, rgba(180,30,30,0.4) ${pR}% 100%)`,
+          }}
+        />
+        <div
+          className="absolute bottom-0 top-0"
+          style={{
+            left: `${pL}%`,
+            width: `${pR - pL}%`,
+            background: inRange
+              ? "linear-gradient(180deg, rgba(0,255,136,0.1) 0%, rgba(0,0,0,0) 100%)"
+              : "linear-gradient(180deg, rgba(200,200,200,0.07) 0%, rgba(0,0,0,0) 100%)",
+          }}
+        />
+        <div
+          className="absolute top-0 h-full w-px -translate-x-1/2 bg-[#a3a3a3] shadow-sm"
+          style={{ left: `${pC}%` }}
+          title="current tick"
+        />
+      </div>
+      <div className="mt-0.5 flex justify-between font-mono text-[10px] text-[#666]">
+        <span className="tabular-nums">{minT.toFixed(0)}</span>
+        <span className="tabular-nums">{maxT.toFixed(0)}</span>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const tokenId = useTokenId();
+  const { isConnected } = useAccount();
+  const { positionState, notDeposited, inRange, drift, isLoading, refetch: refetchPosition } = usePosition(tokenId);
+  const publicClient = usePublicClient();
+  const queryClient = useQueryClient();
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const wrongNetwork = chainId !== arbitrumSepolia.id;
+  const processedHash = useRef<Hash | null>(null);
+
+  const t0 = positionState?.token0;
+  const t1 = positionState?.token1;
+
+  const { data: metas } = useReadContracts({
+    allowFailure: true,
+    contracts: t0 && t1
+      ? [
+          { address: t0, abi: erc20SymbolDecimalsAbi, functionName: "symbol" as const },
+          { address: t0, abi: erc20SymbolDecimalsAbi, functionName: "decimals" as const },
+          { address: t1, abi: erc20SymbolDecimalsAbi, functionName: "symbol" as const },
+          { address: t1, abi: erc20SymbolDecimalsAbi, functionName: "decimals" as const },
+        ]
+      : [],
+    query: { enabled: Boolean(t0 && t1) },
+  });
+
+  const haveMeta = Boolean(
+    metas?.[0]?.status === "success" &&
+    metas?.[1]?.status === "success" &&
+    metas?.[2]?.status === "success" &&
+    metas?.[3]?.status === "success" &&
+    typeof metas[0].result === "string" &&
+    typeof metas[1].result === "number" &&
+    typeof metas[2].result === "string" &&
+    typeof metas[3].result === "number",
+  );
+
+  const sym0 = haveMeta && metas?.[0]?.result != null ? (metas[0].result as string) : "t0";
+  const dec0 = haveMeta && metas?.[1]?.result != null ? (metas[1].result as number) : 18;
+  const sym1 = haveMeta && metas?.[2]?.result != null ? (metas[2].result as string) : "t1";
+  const dec1 = haveMeta && metas?.[3]?.result != null ? (metas[3].result as number) : 18;
+
+  const currentPriceLabel = positionState
+    ? haveMeta
+      ? formatPrice1Per0Label(
+          positionState.currentTick,
+          sym0,
+          sym1,
+          dec0,
+          dec1,
+        )
+      : `tick ${positionState.currentTick}`
+    : "—";
+
+  const centerPriceLabel = positionState
+    ? haveMeta
+      ? formatPrice1Per0Label(
+          positionState.centerTick,
+          sym0,
+          sym1,
+          dec0,
+          dec1,
+        )
+      : `tick ${positionState.centerTick}`
+    : "—";
+
+  const { data: events, isLoading: evLoading, isError: evError } = useQuery({
+    queryKey: ["position-events", tokenId?.toString(), lpAutopilotAddress],
+    queryFn: async () => {
+      if (!publicClient || tokenId === undefined) return [];
+      return getPositionEvents(publicClient, tokenId);
+    },
+    enabled: Boolean(publicClient && tokenId !== undefined && !notDeposited),
+    refetchInterval: positionEventsRefetchInterval,
+  });
+
+  const { writeContract, data: hash, error: writeError, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({
+    hash: hash as Hash | undefined,
+  });
+  const busy = isPending || isConfirming;
+
+  useEffect(() => {
+    if (!hash || !isSuccess || !receipt || receipt.status !== "success") return;
+    if (processedHash.current === hash) return;
+    processedHash.current = hash;
+    void (async () => {
+      await refetchPosition();
+      await queryClient.invalidateQueries({
+        queryKey: ["position-events", tokenId?.toString(), lpAutopilotAddress],
+      });
+    })();
+  }, [hash, isSuccess, receipt, refetchPosition, queryClient, tokenId]);
+
+  const onRebalance = useCallback(() => {
+    if (tokenId === undefined || inRange) return;
+    writeContract({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      functionName: "checkAndRebalance",
+      args: [tokenId],
+    });
+  }, [tokenId, inRange, writeContract]);
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <AppHeader />
+      <div className="border-b border-[#262626] bg-[#0a0a0a] px-3 py-1.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h1 className="font-mono text-sm text-[#a3a3a3]">
+            Position
+            {tokenId !== undefined ? <span className="ml-1.5 text-[#ededed]">#{tokenId.toString()}</span> : null}
+          </h1>
+          {isConnected && wrongNetwork && (
+            <Button
+              type="button"
+              size="sm"
+              className="h-6 font-mono text-[10px]"
+              onClick={() => switchChain({ chainId: arbitrumSepolia.id })}
+              disabled={isSwitching}
+            >
+              {isSwitching ? "Switching…" : "Arbitrum Sepolia"}
+            </Button>
+          )}
+        </div>
+        <p className="mt-0.5 font-mono text-[10px] text-[#555]">Auto refresh every {ONCHAIN_POLL_MS / 1000}s</p>
+      </div>
+
+      <main className="flex-1 space-y-3 p-3">
+        {!isAutopilotConfigured && (
+          <p className="font-mono text-xs text-amber-200/90">
+            Set <span className="text-[#ededed]">NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS</span> in the web env.
+          </p>
+        )}
+
+        {tokenId === undefined && <p className="font-mono text-xs text-red-400/90">Invalid id.</p>}
+
+        {isLoading && tokenId !== undefined && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-16 rounded-sm border border-[#262626] bg-[#111] animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {tokenId && !isLoading && notDeposited && (
+          <div className="max-w-md rounded-sm border border-[#333] bg-[#111] p-3 font-mono text-sm text-[#a3a3a3]">
+            This id is not deposited in Autopilot.
+            <div className="mt-2">
+              <Link className="text-[#888] underline hover:text-[#ededed]" href={`/deposit/${tokenId.toString()}`}>
+                Open deposit
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {positionState && !notDeposited && (
+          <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="border border-[#262626] bg-[#111] p-2">
+                <p className="text-[10px] font-mono uppercase text-[#666]">Status</p>
+                {inRange ? (
+                  <p className="mt-0.5 font-mono text-lg text-[#00ff88]">IN RANGE</p>
+                ) : (
+                  <p className="mt-0.5 font-mono text-lg text-red-400/90">OUT OF RANGE</p>
+                )}
+              </div>
+              <div className="border border-[#262626] bg-[#111] p-2 text-right">
+                <p className="text-[10px] font-mono uppercase text-[#666]">Current price</p>
+                <p className="mt-0.5 font-mono text-xs text-[#ededed] break-all text-right leading-tight">{currentPriceLabel}</p>
+                <p className="mt-0.5 text-[10px] text-[#666] tabular-nums">tick {positionState.currentTick}</p>
+              </div>
+              <div className="border border-[#262626] bg-[#111] p-2 text-right">
+                <p className="text-[10px] font-mono uppercase text-[#666]">Center</p>
+                <p className="mt-0.5 font-mono text-xs text-[#ededed] break-all text-right leading-tight">{centerPriceLabel}</p>
+                <p className="mt-0.5 text-[10px] text-[#666] tabular-nums">tick {positionState.centerTick}</p>
+              </div>
+              <div className="border border-[#262626] bg-[#111] p-2 text-right">
+                <p className="text-[10px] font-mono uppercase text-[#666]">Drift</p>
+                <p className="mt-0.5 font-mono text-sm">
+                  <DriftValue d={drift} />
+                </p>
+                <p className="mt-0.5 text-[10px] text-[#666]">from center, price</p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 border-t border-[#262626] pt-3 md:grid-cols-2">
+              <RangeBar
+                center={positionState.centerTick}
+                current={positionState.currentTick}
+                range={positionState.rangeTicks}
+                inRange={inRange}
+              />
+              <div className="flex flex-col justify-end gap-1">
+                <p className="text-[10px] font-mono text-[#666]">Rebalance</p>
+                <Button
+                  type="button"
+                  className="h-8 w-full max-w-xs font-mono text-xs"
+                  disabled={!isAutopilotConfigured || wrongNetwork || inRange || busy}
+                  onClick={onRebalance}
+                >
+                  {busy ? "Transaction…" : "Rebalance now"}
+                </Button>
+                <p className="text-[10px] text-[#666]">Anyone can call this. You pay gas.</p>
+                {writeError && <p className="text-[10px] text-red-400/90 break-all">{writeError.message}</p>}
+              </div>
+            </div>
+
+            <div className="border-t border-[#262626] pt-3">
+              <p className="mb-1 font-mono text-xs text-[#a3a3a3]">Events</p>
+              {evLoading && (
+                <div className="space-y-1 max-w-4xl">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-7 max-w-4xl animate-pulse rounded-sm bg-[#1a1a1a]" />
+                  ))}
+                </div>
+              )}
+              {evError && <p className="text-xs text-red-400">Could not load events.</p>}
+              {events && events.length === 0 && !evLoading && (
+                <p className="font-mono text-xs text-[#666]">No events for this id yet.</p>
+              )}
+              {events && events.length > 0 && (
+                <div className="w-full max-w-4xl overflow-x-auto">
+                  <table className="w-full border-collapse text-left font-mono text-xs">
+                    <thead>
+                      <tr className="border-b border-[#262626] text-[#666]">
+                        <th className="py-1 pr-3 font-medium">Time</th>
+                        <th className="py-1 pr-3 font-medium">Type</th>
+                        <th className="py-1 pr-0 font-medium text-right">Tx</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {events.map((e) => (
+                        <tr key={`${e.transactionHash}-${e.logIndex}`} className="border-b border-[#1a1a1a]">
+                          <td className="whitespace-nowrap py-1 pr-3 text-right text-[#a3a3a3]">
+                            {new Date(e.blockTimestamp * 1000).toLocaleString()}
+                          </td>
+                          <td className="whitespace-nowrap py-1 pr-3 text-[#ededed]">
+                            {e.kind === "deposited" ? "PositionDeposited" : "RebalanceTriggered"}
+                          </td>
+                          <td className="py-1 text-right text-[#888]">
+                            <a
+                              className="break-all text-[#888] underline decoration-[#333] hover:text-[#a3a3a3]"
+                              href={`${ARBISCAN}/tx/${e.transactionHash}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {e.transactionHash}
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}

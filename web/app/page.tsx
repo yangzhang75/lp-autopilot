@@ -1,35 +1,46 @@
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { WalletConnect } from "@/components/wallet-connect";
+import { AppHeader } from "@/components/app-header";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="flex h-12 items-center justify-between border-b border-[#262626] px-4">
-        <span className="font-mono text-xs uppercase tracking-widest text-[#888]">
-          LP Autopilot
-        </span>
-        <WalletConnect />
-      </header>
+      <AppHeader />
 
-      <main className="flex flex-1 flex-col items-center justify-center p-6">
-        <div className="w-full max-w-2xl space-y-6 text-center">
-          <h1 className="font-mono text-3xl font-medium tracking-tight text-[#ededed] md:text-4xl">
+      <main className="flex flex-1 flex-col p-3">
+        <div className="mx-auto w-full max-w-2xl space-y-4 text-left">
+          <h1 className="font-mono text-2xl font-medium tracking-tight text-[#ededed]">
             LP Autopilot
           </h1>
           <p className="text-sm leading-relaxed text-[#888]">
-            Set-and-forget strategies for onchain liquidity providers
+            Deposit Uniswap v3 positions on Arbitrum Sepolia, track center vs live price, and
+            trigger rebalances when the pool moves out of band.
           </p>
 
-          <Card className="rounded-sm border border-[#262626] bg-[#141414] text-left">
+          <div className="flex flex-wrap gap-2">
+            <Link
+              className={cn(
+                buttonVariants({ size: "default" }),
+                "h-8 font-mono text-xs",
+              )}
+              href="/positions"
+            >
+              My positions
+            </Link>
+            <p className="self-center text-xs text-[#666]">Connect on the next page if needed.</p>
+          </div>
+
+          <Card className="rounded-sm border border-[#262626] bg-[#111] text-left">
             <CardHeader className="pb-2">
-              <CardTitle className="font-mono text-sm font-normal text-[#ededed]">
-                Next
-              </CardTitle>
+              <CardTitle className="font-mono text-sm font-normal text-[#a3a3a3]">Flow</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="font-mono text-xs text-[#888]">
-                Coming soon: deposit flow
-              </p>
+              <ol className="list-decimal space-y-1 pl-4 font-mono text-xs text-[#a3a3a3]">
+                <li>Open My positions, pick a pool NFT, and deposit to Autopilot.</li>
+                <li>Use the position dashboard to watch status and (when out of range) rebalance.</li>
+              </ol>
             </CardContent>
           </Card>
         </div>
