@@ -1,0 +1,288 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAccount, useChainId, useReadContract, useSwitchChain, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { arbitrumSepolia } from "wagmi/chains";
+import type { Hash } from "viem";
+import { isAddressEqual } from "viem";
+import { AppHeader } from "@/components/app-header";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { isAutopilotConfigured, lpAutopilotAbi, lpAutopilotAddress } from "@/lib/contract";
+import { ARBITRUM_SEPOLIA_NPM } from "@/lib/addresses";
+import { nonfungiblePositionManagerAbi } from "@/lib/abis/positionManager";
+import { useQueryClient } from "@tanstack/react-query";
+import { formatFeeTier } from "@/lib/uniswap-math";
+import { erc20SymbolDecimalsAbi } from "@/lib/abis/erc20";
+import { useReadContracts } from "wagmi";
+import { readNpmPositionTuple } from "@/lib/read-npm-position";
+
+// shared tuple reader — inline minimal import
+function useParseTokenId() {
+  const p = useParams();
+  return useMemo(() => {
+    const s = p?.tokenId;
+    if (typeof s !== "string" || !/^\d+$/.test(s)) return undefined;
+    try {
+      return BigInt(s);
+    } catch {
+      return undefined;
+    }
+  }, [p]);
+}
+
+export default function DepositPage() {
+  const tokenId = useParseTokenId();
+  const { address, isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [rangeStr, setRangeStr] = useState("600");
+  const [pending, setPending] = useState<"approve" | "deposit" | null>(null);
+
+  const { data: positionRaw } = useReadContract({
+    address: ARBITRUM_SEPOLIA_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: "positions",
+    args: tokenId !== undefined ? [tokenId] : undefined,
+    query: { enabled: tokenId !== undefined },
+  });
+
+  const { data: owner } = useReadContract({
+    address: ARBITRUM_SEPOLIA_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: "ownerOf",
+    args: tokenId !== undefined ? [tokenId] : undefined,
+    query: { enabled: tokenId !== undefined && !!isConnected },
+  });
+
+  const { data: isApprovedForAll, refetch: refetchA } = useReadContract({
+    address: ARBITRUM_SEPOLIA_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: "isApprovedForAll",
+    args: address && lpAutopilotAddress ? [address, lpAutopilotAddress] : undefined,
+    query: { enabled: Boolean(address && isConnected) },
+  });
+
+  const { data: getApproved, refetch: refetchB } = useReadContract({
+    address: ARBITRUM_SEPOLIA_NPM,
+    abi: nonfungiblePositionManagerAbi,
+    functionName: "getApproved",
+    args: tokenId !== undefined ? [tokenId] : undefined,
+    query: { enabled: tokenId !== undefined && isConnected },
+  });
+
+  const pos = useMemo(() => {
+    if (positionRaw == null) return null;
+    return readNpmPositionTuple(positionRaw as never);
+  }, [positionRaw]);
+
+  const { data: metas } = useReadContracts({
+    allowFailure: true,
+    contracts: pos
+      ? [
+          { address: pos.token0, abi: erc20SymbolDecimalsAbi, functionName: "symbol" as const },
+          { address: pos.token1, abi: erc20SymbolDecimalsAbi, functionName: "symbol" as const },
+        ]
+      : [],
+    query: { enabled: Boolean(pos) },
+  });
+
+  const sym0 =
+    metas?.[0] && metas[0].status === "success" && typeof metas[0].result === "string"
+      ? metas[0].result
+      : null;
+  const sym1 =
+    metas?.[1] && metas[1].status === "success" && typeof metas[1].result === "string"
+      ? metas[1].result
+      : null;
+
+  const approved = Boolean(
+    isApprovedForAll === true || (getApproved && isAddressEqual(getApproved, lpAutopilotAddress)),
+  );
+
+  const rangeTicks = useMemo(() => {
+    const n = Math.floor(Number(rangeStr));
+    if (!Number.isFinite(n) || n < 1) return null;
+    if (n > 8_000_000) return null;
+    return n;
+  }, [rangeStr]);
+
+  const { writeContract, data: hash, error: writeError, isPending, reset } = useWriteContract();
+  const { isLoading: isConfirming, data: receipt } = useWaitForTransactionReceipt({ hash: hash as Hash | undefined });
+
+  const refetchApproval = useCallback(async () => {
+    await Promise.all([refetchA(), refetchB(), queryClient.invalidateQueries({ queryKey: ["npm-positions", address] })]);
+  }, [refetchA, refetchB, queryClient, address]);
+
+  useEffect(() => {
+    if (!receipt || receipt.status !== "success" || !pending) return;
+    (async () => {
+      if (pending === "approve") {
+        await refetchApproval();
+        setPending(null);
+        reset();
+      } else if (pending === "deposit") {
+        setPending(null);
+        reset();
+        if (tokenId !== undefined) {
+          await queryClient.invalidateQueries();
+          router.replace(`/dashboard/${tokenId.toString()}`);
+        }
+      }
+    })();
+  }, [receipt, pending, refetchApproval, queryClient, reset, router, tokenId]);
+
+  const onApprove = () => {
+    if (tokenId === undefined || !isAutopilotConfigured) return;
+    setPending("approve");
+    writeContract({
+      address: ARBITRUM_SEPOLIA_NPM,
+      abi: nonfungiblePositionManagerAbi,
+      functionName: "approve",
+      args: [lpAutopilotAddress, tokenId],
+    });
+  };
+
+  const onDeposit = () => {
+    if (tokenId === undefined || rangeTicks === null || !isAutopilotConfigured) return;
+    setPending("deposit");
+    writeContract({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      functionName: "deposit",
+      args: [tokenId, rangeTicks],
+    });
+  };
+
+  const wrongNetwork = chainId !== arbitrumSepolia.id;
+  const ownerOk = owner && address && isAddressEqual(owner, address);
+  const busy = isPending || isConfirming;
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <AppHeader />
+      <main className="flex-1 p-3">
+        <h1 className="mb-3 font-mono text-sm text-[#a3a3a3]">Deposit position</h1>
+        {!isAutopilotConfigured && (
+          <p className="mb-2 font-mono text-xs text-amber-200/90">
+            Configure <span className="text-[#ededed]">NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS</span> first.
+          </p>
+        )}
+        {tokenId === undefined && (
+          <p className="font-mono text-xs text-red-400">Invalid position id in URL.</p>
+        )}
+        {isConnected && wrongNetwork && (
+          <div className="mb-3 space-y-2">
+            <p className="font-mono text-xs text-[#a3a3a3]">Switch network to Arbitrum Sepolia.</p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => switchChain({ chainId: arbitrumSepolia.id })}
+              disabled={isSwitching}
+              className="h-7 font-mono text-xs"
+            >
+              {isSwitching ? "Switching…" : "Switch network"}
+            </Button>
+          </div>
+        )}
+        {isConnected && tokenId !== undefined && owner != null && !ownerOk && (
+          <p className="font-mono text-xs text-red-400">
+            This position NFT is not in your connected wallet.
+          </p>
+        )}
+
+        {isConnected && tokenId && pos && ownerOk && !wrongNetwork && (
+          <div className="grid max-w-lg gap-3">
+            <Card className="border-[#262626] bg-[#111]">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-mono text-sm font-normal text-[#ededed]">
+                  #{tokenId.toString()}{" "}
+                  {sym0 && sym1 ? (
+                    <span className="text-[#a3a3a3]">
+                      {sym0}/{sym1}
+                    </span>
+                  ) : null}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1.5 font-mono text-xs text-[#a3a3a3]">
+                <div className="flex justify-between">
+                  <span className="text-[#666]">Fee</span>
+                  <span className="text-right tabular-nums">{formatFeeTier(pos.fee)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#666]">Tick range</span>
+                  <span className="text-right tabular-nums">
+                    {pos.tickLower} → {pos.tickUpper}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#666]">Liquidity</span>
+                  <span className="text-right tabular-nums">{pos.liquidity.toString()}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="rt" className="font-mono text-xs text-[#a3a3a3]">
+                Range ticks
+              </Label>
+              <Input
+                id="rt"
+                value={rangeStr}
+                onChange={(e) => setRangeStr(e.target.value)}
+                className="h-8 max-w-[200px] border-[#333] bg-[#0a0a0a] font-mono text-xs"
+              />
+              <p className="text-[10px] leading-relaxed text-[#666]">
+                Autopilot tracks pool price; when the tick drifts more than this many ticks either side
+                of the <span className="text-[#a3a3a3]">center tick at deposit</span>, a rebalance is
+                possible. 600 is roughly a ~6% move each side in price (only an approximation).
+              </p>
+            </div>
+
+            {rangeTicks === null && <p className="text-xs text-red-400/90">Enter a valid positive int24 (e.g. 600).</p>}
+
+            <div className="flex flex-col gap-2 border-t border-[#262626] pt-3">
+              <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">Step 1</p>
+              <Button
+                type="button"
+                className="h-8 w-full max-w-sm font-mono text-xs"
+                onClick={onApprove}
+                disabled={!isAutopilotConfigured || wrongNetwork || approved || busy || rangeTicks === null}
+              >
+                {approved ? "Autopilot can move this NFT" : busy && pending === "approve" ? "Approving…" : "Approve Autopilot on NFT"}
+              </Button>
+
+              <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">Step 2</p>
+              <Button
+                type="button"
+                className="h-8 w-full max-w-sm font-mono text-xs"
+                onClick={onDeposit}
+                disabled={!isAutopilotConfigured || wrongNetwork || !approved || busy || rangeTicks === null}
+              >
+                {busy && pending === "deposit" ? (isConfirming ? "Confirming…" : "Depositing…") : "Deposit to Autopilot"}
+              </Button>
+            </div>
+
+            {isConfirming && (
+              <div className="h-1 w-full max-w-sm animate-pulse rounded-sm bg-[#262626]" title="Transaction confirming" />
+            )}
+            {writeError && (
+              <p className="whitespace-pre-wrap break-all font-mono text-xs text-red-400/90">
+                {writeError.message}
+              </p>
+            )}
+          </div>
+        )}
+
+        {!isConnected && (
+          <p className="font-mono text-sm text-[#666]">Connect your wallet to continue.</p>
+        )}
+      </main>
+    </div>
+  );
+}
