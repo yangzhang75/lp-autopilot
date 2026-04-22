@@ -41,9 +41,10 @@ function Steps() {
         <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-sm border border-[#333] text-[#00ff88]">
           <RefreshCw className="h-4 w-4" aria-hidden />
         </div>
-        <h3 className="font-mono text-sm text-[#ededed]">3. Auto-rebalance</h3>
+        <h3 className="font-mono text-sm text-[#ededed]">3. Exit on trigger (v1)</h3>
         <p className="mt-1 text-xs leading-relaxed text-[#888]">
-          Anyone can call the contract when out of range. The pool moves, not your trust model.
+          When price leaves your band, anyone can run the exit path: fees collected, liquidity removed, tokens held in
+          Autopilot. Withdraw anytime. Ongoing re-mint is planned.
         </p>
       </div>
     </div>
@@ -111,20 +112,27 @@ export default function Home() {
         </section>
 
         {isAutopilotConfigured && (
-          <section className="grid gap-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4 sm:grid-cols-2">
+          <section className="grid gap-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4 sm:grid-cols-3">
             <div>
               <p className="text-[10px] font-mono uppercase text-[#666]">Onchain stats</p>
               <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
                 {statsLoad ? "—" : (stats?.positionDeposits ?? 0).toString()}
               </p>
-              <p className="text-xs text-[#888]">Total deposits (PositionDeposited events)</p>
+              <p className="text-xs text-[#888]">PositionDeposited</p>
             </div>
             <div>
               <p className="text-[10px] font-mono uppercase text-[#666]">Rebalances</p>
               <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
                 {statsLoad ? "—" : (stats?.rebalances ?? 0).toString()}
               </p>
-              <p className="text-xs text-[#888]">RebalanceTriggered (all positions)</p>
+              <p className="text-xs text-[#888]">RebalanceTriggered</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-mono uppercase text-[#666]">Withdrawals</p>
+              <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
+                {statsLoad ? "—" : (stats?.withdrawals ?? 0).toString()}
+              </p>
+              <p className="text-xs text-[#888]">PositionWithdrawn</p>
             </div>
           </section>
         )}

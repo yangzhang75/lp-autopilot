@@ -12,7 +12,7 @@ import {IUniswapV3Factory} from "@uniswap/v3-core/interfaces/IUniswapV3Factory.s
 import {IUniswapV3Pool} from "@uniswap/v3-core/interfaces/IUniswapV3Pool.sol";
 
 /// @title LPAutopilot
-/// @notice Hackathon v1: rebalance path exits liquidity to ERC20s and burns the NFT; re-mint can be added later.
+/// @notice Hackathon v1: the out-of-range path collects fees, removes liquidity, and holds ERC20s (NFT burned; re-mint v2+).
 contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -33,7 +33,15 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
 
     mapping(uint256 positionKey => Position) internal _positions;
 
-    event PositionDeposited(address indexed owner, uint256 indexed tokenId, int24 rangeTicks);
+    event PositionDeposited(
+        address indexed owner,
+        uint256 indexed tokenId,
+        address token0,
+        address token1,
+        uint24 fee,
+        int24 initialCenterTick,
+        int24 rangeTicks
+    );
     /// @dev v1 simplified rebalance: liquidity removed and tokens held as ERC20; no new NFT minted yet.
     event RebalanceTriggered(
         uint256 indexed positionKey,
@@ -57,11 +65,16 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         factory = IUniswapV3Factory(uniswapV3Factory);
     }
 
+    /// @notice Deposit a Uniswap v3 position NFT; Autopilot records your tick band and becomes custodian of the NFT.
+    /// @param tokenId The NPM `tokenId` to custody.
+    /// @param rangeTicks Half-width of the “in range” band in ticks (autopilot compares pool tick to `centerTick ± rangeTicks`).
     function deposit(uint256 tokenId, int24 rangeTicks) external nonReentrant {
+        if (_positions[tokenId].owner != address(0)) revert AlreadyDeposited();
         IERC721(address(positionManager)).transferFrom(msg.sender, address(this), tokenId);
         _registerPosition(msg.sender, tokenId, rangeTicks);
     }
 
+    /// @notice ERC721 path for the same as `deposit`: pass `rangeTicks` as `abi.encode(int24)`.
     function onERC721Received(address, address from, uint256 tokenId, bytes calldata data)
         external
         nonReentrant
@@ -78,20 +91,7 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         if (rangeTicks <= 0) revert InvalidRange();
         if (_positions[tokenId].owner != address(0)) revert AlreadyDeposited();
 
-        (
-            ,
-            ,
-            address token0,
-            address token1,
-            uint24 fee,
-            ,
-            ,
-            uint128 liquidity,
-            ,
-            ,
-            ,
-
-        ) = positionManager.positions(tokenId);
+        (,, address token0, address token1, uint24 fee,,, uint128 liquidity,,,,) = positionManager.positions(tokenId);
 
         if (liquidity == 0) revert InvalidRange();
 
@@ -99,6 +99,8 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         if (pool == address(0)) revert InvalidRange();
 
         (, int24 currentTick,,,,,) = IUniswapV3Pool(pool).slot0();
+        if (int256(currentTick) - int256(int24(rangeTicks)) < -887_272) revert InvalidRange();
+        if (int256(currentTick) + int256(int24(rangeTicks)) > 887_272) revert InvalidRange();
 
         _positions[tokenId] = Position({
             owner: owner_,
@@ -112,15 +114,17 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
             pending1: 0
         });
 
-        emit PositionDeposited(owner_, tokenId, rangeTicks);
+        emit PositionDeposited(owner_, tokenId, token0, token1, fee, currentTick, rangeTicks);
     }
 
+    /// @notice If pool tick is outside `centerTick ± rangeTicks`, remove liquidity, collect, and burn the NFT. Tokens are held in Autopilot; call `withdraw` to claim.
     function checkAndRebalance(uint256 tokenId) external nonReentrant {
         Position storage p = _positions[tokenId];
         if (p.owner == address(0)) revert UnknownPosition();
         if (p.nftId == 0) revert NoActiveNft();
 
         address pool = factory.getPool(p.token0, p.token1, p.fee);
+        if (pool == address(0)) revert InvalidRange();
         (, int24 currentTick,,,,,) = IUniswapV3Pool(pool).slot0();
 
         int24 lower = p.centerTick - p.rangeTicks;
@@ -130,31 +134,14 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         uint256 oldNftId = p.nftId;
         int24 oldCenter = p.centerTick;
 
-        (
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            ,
-            uint128 liquidity,
-            ,
-            ,
-            ,
-
-        ) = positionManager.positions(oldNftId);
+        (,,,,,,, uint128 liquidity,,,,) = positionManager.positions(oldNftId);
 
         uint256 deadline = block.timestamp + 600;
 
         if (liquidity > 0) {
             positionManager.decreaseLiquidity(
                 INonfungiblePositionManager.DecreaseLiquidityParams({
-                    tokenId: oldNftId,
-                    liquidity: liquidity,
-                    amount0Min: 0,
-                    amount1Min: 0,
-                    deadline: deadline
+                    tokenId: oldNftId, liquidity: liquidity, amount0Min: 0, amount1Min: 0, deadline: deadline
                 })
             );
         }
@@ -178,6 +165,7 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         emit RebalanceTriggered(tokenId, oldNftId, oldCenter, currentTick, c0, c1);
     }
 
+    /// @notice Return any pending ERC20s to the position owner, and the NFT to the owner if one is still active.
     function withdraw(uint256 tokenId) external nonReentrant {
         Position storage p = _positions[tokenId];
         if (p.owner == address(0)) revert UnknownPosition();
@@ -193,15 +181,12 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         if (nid != 0) {
             (uint256 c0, uint256 c1) = positionManager.collect(
                 INonfungiblePositionManager.CollectParams({
-                    tokenId: nid,
-                    recipient: address(this),
-                    amount0Max: type(uint128).max,
-                    amount1Max: type(uint128).max
+                    tokenId: nid, recipient: address(this), amount0Max: type(uint128).max, amount1Max: type(uint128).max
                 })
             );
             send0 += c0;
             send1 += c1;
-            IERC721(address(positionManager)).safeTransferFrom(address(this), msg.sender, nid);
+            IERC721(address(positionManager)).transferFrom(address(this), msg.sender, nid);
         }
 
         delete _positions[tokenId];
@@ -212,6 +197,7 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         emit PositionWithdrawn(msg.sender, tokenId);
     }
 
+    /// @notice Returns pool tick, band, the NPM `tokenId` still held in custody (or 0 after exit+burn), and pending token balances. For exited positions, `inRange` is false.
     function getPositionState(uint256 tokenId)
         external
         view
@@ -223,7 +209,10 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
             int24 currentTick,
             int24 centerTick,
             int24 rangeTicks,
-            bool inRange
+            bool inRange,
+            uint256 activeNftId,
+            uint256 pending0,
+            uint256 pending1
         )
     {
         Position storage p = _positions[tokenId];
@@ -233,14 +222,40 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
         fee = p.fee;
         centerTick = p.centerTick;
         rangeTicks = p.rangeTicks;
+        activeNftId = p.nftId;
+        pending0 = p.pending0;
+        pending1 = p.pending1;
 
         if (owner == address(0)) {
-            return (owner, token0, token1, fee, 0, centerTick, rangeTicks, false);
+            return (owner, token0, token1, fee, 0, centerTick, rangeTicks, false, 0, 0, 0);
+        }
+
+        if (p.nftId == 0) {
+            address pool0 = factory.getPool(p.token0, p.token1, p.fee);
+            if (pool0 == address(0)) {
+                return (owner, token0, token1, fee, 0, centerTick, rangeTicks, false, activeNftId, pending0, pending1);
+            }
+            (, currentTick,,,,,) = IUniswapV3Pool(pool0).slot0();
+            inRange = false;
+            return
+                (
+                    owner,
+                    token0,
+                    token1,
+                    fee,
+                    currentTick,
+                    centerTick,
+                    rangeTicks,
+                    false,
+                    activeNftId,
+                    pending0,
+                    pending1
+                );
         }
 
         address pool = factory.getPool(p.token0, p.token1, p.fee);
         if (pool == address(0)) {
-            return (owner, token0, token1, fee, 0, centerTick, rangeTicks, false);
+            return (owner, token0, token1, fee, 0, centerTick, rangeTicks, false, activeNftId, pending0, pending1);
         }
 
         (, currentTick,,,,,) = IUniswapV3Pool(pool).slot0();

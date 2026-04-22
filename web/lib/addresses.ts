@@ -9,3 +9,12 @@ export const ARBITRUM_SEPOLIA_V3_FACTORY: Address =
 export const UNISWAP_ARBITRUM_SEPOLIA_APP = "https://app.uniswap.org/";
 
 export const ONCHAIN_POLL_MS = 15_000;
+
+/** `eth_getLogs` window start; set `NEXT_PUBLIC_LP_AUTOPILOT_DEPLOY_BLOCK` to your deployment block on Alchemy/Infura to avoid large ranges. */
+function parseAutopilotFromBlock(): bigint {
+  const raw = process.env.NEXT_PUBLIC_LP_AUTOPILOT_DEPLOY_BLOCK;
+  if (raw == null || raw === "" || !/^\d+$/.test(raw)) return BigInt(0);
+  return BigInt(raw);
+}
+
+export const lpAutopilotFromBlock = parseAutopilotFromBlock();

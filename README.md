@@ -1,10 +1,8 @@
 # LP Autopilot
 
-> Autopilot for Uniswap v3 positions. Set a range rule once, and anyone can trigger onchain rebalances when your position drifts out of range. You keep custody. Fully auditable.
+> Autopilot for Uniswap v3 positions. Set a range rule; anyone can trigger the onchain exit when price leaves your band. You keep withdrawal rights. Fully auditable.
 
 ![demo](./docs/demo.gif)
-
-(If the image is missing, add a screen recording or GIF at `docs/demo.gif` for the README preview.)
 
 **Live demo**: https://lp-autopilot.vercel.app
 
@@ -17,8 +15,8 @@ Retail LPs on Uniswap v3 lose money not because concentrated liquidity is bad, b
 ## What LP Autopilot does
 
 1. Deposit your Uniswap v3 NFT position into the Autopilot contract
-2. Set a range rule (e.g. "rebalance when price drifts ±6% from center")
-3. Anyone — you, a keeper, or a bot — can call `checkAndRebalance()`. If the condition is met, the contract collects fees, withdraws liquidity, and re-centers the position. If not, the call reverts. You never give up custody.
+2. Set a range rule in ticks (a band around the current pool tick)
+3. **V1 behavior:** when price is outside that band, anyone can call `checkAndRebalance()`. The contract collects fees, removes liquidity, and holds ERC20s (the position NFT is burned; there is no automatic re-mint yet). You withdraw via `withdraw()` to receive any remaining ERC20s and, if any, the NFT. If price is still inside the band, the call reverts. You can leave at any time with `withdraw()`.
 
 ## Why this must be onchain
 
@@ -51,12 +49,16 @@ flowchart LR
 # Contracts
 cd contracts
 forge install
-forge test --fork-url "$ARBITRUM_SEPOLIA_RPC_URL"
+# Fork / integration tests use Uniswap on Arbitrum **One** mainnet; use a mainnet RPC, not Arbitrum Sepolia.
+ARBITRUM_MAINNET_RPC_URL="https://arb1.arbitrum.io/rpc" forge test -vvv
+# or: forge test --fork-url arbitrum_mainnet  (if ARBITRUM_MAINNET_RPC_URL is in env; see contracts/foundry.toml)
 
 # Frontend
 cd ../web
 pnpm install
-cp .env.example .env.local  # fill in NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID and NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS
+cp .env.example .env.local
+# set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS,
+# and optionally NEXT_PUBLIC_LP_AUTOPILOT_DEPLOY_BLOCK (for event queries on public RPCs)
 pnpm dev
 ```
 

@@ -12,7 +12,7 @@ export function useAutopilotGlobalStats() {
   return useQuery({
     queryKey: ["autopilot-global-stats", lpAutopilotAddress],
     queryFn: async () => {
-      if (!publicClient) return { positionDeposits: 0, rebalances: 0 };
+      if (!publicClient) return { positionDeposits: 0, rebalances: 0, withdrawals: 0 };
       return getAutopilotGlobalStats(publicClient);
     },
     enabled: Boolean(publicClient && isAutopilotConfigured),

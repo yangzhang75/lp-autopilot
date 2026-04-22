@@ -16,6 +16,9 @@ export type PositionState = {
   centerTick: number;
   rangeTicks: number;
   inRange: boolean;
+  activeNftId: bigint;
+  pending0: bigint;
+  pending1: bigint;
 };
 
 export function usePosition(tokenId: bigint | undefined) {
@@ -49,8 +52,12 @@ export function usePosition(tokenId: bigint | undefined) {
       number | bigint,
       number | bigint,
       boolean,
+      bigint,
+      bigint,
+      bigint,
     ];
-    const [owner, token0, token1, fee, currentTick, centerTick, rangeTicks, inRange] = t;
+    const [owner, token0, token1, fee, currentTick, centerTick, rangeTicks, inRange, activeNftId, pending0, pending1] =
+      t;
     if (isAddressEqual(owner, zeroAddress)) {
       return { positionState: null as PositionState | null, notDeposited: true };
     }
@@ -65,6 +72,9 @@ export function usePosition(tokenId: bigint | undefined) {
         centerTick: Number(centerTick),
         rangeTicks: Number(rangeTicks),
         inRange,
+        activeNftId,
+        pending0,
+        pending1,
       } satisfies PositionState,
     };
   }, [data]);

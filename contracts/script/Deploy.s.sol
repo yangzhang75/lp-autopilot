@@ -16,6 +16,8 @@ contract DeployScript is Script {
 
         vm.stopBroadcast();
 
-        console2.log("LPAutopilot deployed at:", address(deployed));
+        console2.log("LPAutopilot deployed at  :", address(deployed));
+        console2.log("  NonfungiblePositionMgr :", npm);
+        console2.log("  Uniswap v3 factory     :", factory);
     }
 }

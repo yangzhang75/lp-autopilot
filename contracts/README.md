@@ -1,66 +1,14 @@
-## Foundry
+# LP Autopilot (contracts)
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+Solidity 0.8.24, Foundry. `LPAutopilot` custodies Uniswap v3 position NFTs and implements a v1 “exit when out of band” path (see main repo `README`).
 
-Foundry consists of:
+**Deploy to Arbitrum Sepolia** (NPM and factory in `script/Deploy.s.sol`):
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```bash
+cd contracts
+PRIVATE_KEY=0x... ARBITRUM_SEPOLIA_RPC_URL=... make deploy-sepolia
 ```
 
-### Test
+Verify the contract on [Arbiscan Sepolia](https://sepolia.arbiscan.io/) after deploy.
 
-```shell
-$ forge test
-```
-
-### Format
-
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+**Fork / integration tests** use Arbitrum **One** mainnet Uniswap addresses; set `ARBITRUM_MAINNET_RPC_URL` to an Arbitrum mainnet HTTP endpoint, then from repo root: `make test` or `cd contracts && forge test -vvv`.
