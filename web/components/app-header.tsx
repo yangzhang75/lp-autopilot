@@ -14,9 +14,19 @@ const links = [
 export function AppHeader() {
   const pathname = usePathname();
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between border-b border-[#262626] px-3">
-      <div className="flex items-center gap-4">
-        <span className="font-mono text-xs uppercase tracking-widest text-[#888]">LP Autopilot</span>
+    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between border-b border-[#262626] bg-[#0a0a0a]/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0a]/80 md:px-4">
+      <div className="flex items-center gap-5">
+        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+          <span
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm border border-[#262626] bg-[#0d0d0d] font-mono text-[10px] text-[#00ff88]"
+            aria-hidden
+          >
+            LP
+          </span>
+          <span className="hidden font-mono text-xs uppercase tracking-[0.18em] text-[#ededed] sm:inline">
+            Autopilot
+          </span>
+        </Link>
         <nav className="flex items-center gap-0.5">
           {links.map((l) => {
             const active =
@@ -30,8 +40,10 @@ export function AppHeader() {
                 key={l.href}
                 href={l.href}
                 className={cn(
-                  "rounded-sm px-2 py-1 font-mono text-xs",
-                  active ? "bg-[#1a1a1a] text-[#ededed]" : "text-[#666] hover:text-[#a3a3a3]",
+                  "rounded-sm px-2 py-1 font-mono text-xs transition-colors",
+                  active
+                    ? "bg-[#141414] text-[#ededed]"
+                    : "text-[#666] hover:bg-[#141414]/60 hover:text-[#a3a3a3]",
                 )}
               >
                 {l.label}

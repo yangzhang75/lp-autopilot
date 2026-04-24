@@ -9,69 +9,84 @@ import { cn } from "@/lib/utils";
 import { WrongNetworkBanner } from "@/components/wrong-network-banner";
 import { OnchainStatsGrid } from "@/components/onchain-stats-grid";
 
+function StepCard({
+  n,
+  icon,
+  title,
+  children,
+}: {
+  n: string;
+  icon: React.ReactNode;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="group flex flex-col rounded-sm border border-[#262626] bg-[#0d0d0d] p-5 transition-colors duration-150 hover:border-[#333]">
+      <div className="mb-3 flex items-center justify-between">
+        <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-[#262626] bg-[#141414] text-[#00ff88]">
+          {icon}
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#555]">
+          step {n}
+        </span>
+      </div>
+      <h3 className="font-mono text-sm text-[#ededed]">{title}</h3>
+      <p className="mt-2 text-xs leading-relaxed text-[#888]">{children}</p>
+    </div>
+  );
+}
+
 function Steps() {
   return (
     <div className="grid gap-4 sm:grid-cols-3">
-      <div className="rounded-sm border border-[#262626] bg-[#111] p-4">
-        <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-sm border border-[#333] text-[#00ff88]">
-          <Wallet className="h-4 w-4" aria-hidden />
-        </div>
-        <h3 className="font-mono text-sm text-[#ededed]">1. Deposit NFT</h3>
-        <p className="mt-1 text-xs leading-relaxed text-[#888]">
-          Send your Uniswap v3 position into the Autopilot contract. You can withdraw; custody stays
-          in the contract you approved.
-        </p>
-      </div>
-      <div className="rounded-sm border border-[#262626] bg-[#111] p-4">
-        <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-sm border border-[#333] text-[#00ff88]">
-          <Workflow className="h-4 w-4" aria-hidden />
-        </div>
-        <h3 className="font-mono text-sm text-[#ededed]">2. Set rule</h3>
-        <p className="mt-1 text-xs leading-relaxed text-[#888]">
-          Choose a tick range around the pool center. When price leaves that band, a rebalance can be
-          triggered.
-        </p>
-      </div>
-      <div className="rounded-sm border border-[#262626] bg-[#111] p-4">
-        <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-sm border border-[#333] text-[#00ff88]">
-          <RefreshCw className="h-4 w-4" aria-hidden />
-        </div>
-        <h3 className="font-mono text-sm text-[#ededed]">3. Atomic rebalance</h3>
-        <p className="mt-1 text-xs leading-relaxed text-[#888]">
-          When price drifts out of your range, anyone can call{" "}
-          <code className="rounded-sm bg-[#1a1a1a] px-1 py-px font-mono text-[10px] text-[#a3a3a3]">
-            checkAndRebalance
-          </code>
-          . In a single atomic transaction, the contract exits the old position, collects fees, and mints a new position
-          centered at the current price. Fully on-chain, trustless, and auditable.
-        </p>
-      </div>
+      <StepCard n="01" icon={<Wallet className="h-3.5 w-3.5" aria-hidden />} title="Deposit LP NFT">
+        Send your Uniswap v3 position into the Autopilot contract. Custody stays in the contract you
+        approved — withdraw any time.
+      </StepCard>
+      <StepCard n="02" icon={<Workflow className="h-3.5 w-3.5" aria-hidden />} title="Set range rule">
+        Choose a tick range around the pool center. When price drifts beyond that band, a rebalance
+        becomes callable.
+      </StepCard>
+      <StepCard
+        n="03"
+        icon={<RefreshCw className="h-3.5 w-3.5" aria-hidden />}
+        title="Atomic rebalance"
+      >
+        Anyone calls{" "}
+        <code className="rounded-sm bg-[#141414] px-1 py-px font-mono text-[10px] text-[#a3a3a3]">
+          checkAndRebalance
+        </code>
+        . One transaction exits the old position, collects fees, and mints a new one centered at the
+        current price.
+      </StepCard>
     </div>
   );
 }
 
 function Why() {
   return (
-    <ul className="space-y-2 text-sm text-[#a3a3a3]">
-      <li className="flex gap-2">
-        <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#666]" aria-hidden />
-        <span>
+    <ul className="divide-y divide-[#1f1f1f]">
+      <li className="flex gap-3 py-3 first:pt-0">
+        <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[#555]" aria-hidden />
+        <span className="text-sm text-[#a3a3a3]">
           <span className="text-[#ededed]">Trustless execution.</span> Rebalance rules live in
           bytecode, not a server.
         </span>
       </li>
-      <li className="flex gap-2">
-        <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#666]" aria-hidden />
-        <span>
+      <li className="flex gap-3 py-3">
+        <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-[#555]" aria-hidden />
+        <span className="text-sm text-[#a3a3a3]">
           <span className="text-[#ededed]">You keep custody.</span> Position NFTs sit in a contract
-          you can exit from; no API key, no fund custody.
+          you can exit from — no API key, no fund custody.
         </span>
       </li>
-      <li className="flex gap-2">
-        <span className="mt-0.5 font-mono text-xs text-[#666]">↗</span>
-        <span>
+      <li className="flex gap-3 py-3 last:pb-0">
+        <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center font-mono text-xs text-[#555]">
+          ↗
+        </span>
+        <span className="text-sm text-[#a3a3a3]">
           <span className="text-[#ededed]">Auditable on Arbiscan.</span> Deposits and rebalances
-          are events; anyone can verify.
+          are events — anyone can verify.
         </span>
       </li>
     </ul>
@@ -83,51 +98,53 @@ export default function Home() {
     <div className="flex min-h-screen flex-col">
       <AppHeader />
       <WrongNetworkBanner className="mx-3 mt-2" />
-      <main className="mx-auto w-full max-w-4xl flex-1 space-y-12 px-3 py-8">
-        <section className="relative space-y-4 overflow-hidden rounded-sm px-1 py-1">
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-10 px-3 py-8 md:px-4 md:py-10">
+        <section className="relative overflow-hidden rounded-sm px-1 py-2">
           <div
-            className="pointer-events-none absolute inset-0 -z-10 rounded-sm opacity-[0.55]"
+            className="pointer-events-none absolute inset-0 -z-10 rounded-sm opacity-[0.5]"
             style={{
               backgroundImage:
-                "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)",
-              backgroundSize: "32px 32px",
+                "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
+              backgroundSize: "28px 28px",
+              maskImage:
+                "radial-gradient(ellipse 80% 60% at 20% 20%, black 40%, transparent 100%)",
             }}
             aria-hidden
           />
-          <h1 className="font-sans text-3xl font-semibold leading-tight tracking-tight text-[#ededed] md:text-4xl">
-            Autopilot for your Uniswap v3 positions.
+          <div className="mb-4 inline-flex items-center gap-2 rounded-sm border border-[#262626] bg-[#0d0d0d] px-2.5 py-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#00ff88] demo-pulse-dot" aria-hidden />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+              Live on Arbitrum Sepolia
+            </span>
+          </div>
+          <h1 className="max-w-3xl font-sans text-3xl font-semibold leading-[1.1] tracking-tight text-[#ededed] md:text-5xl">
+            Autopilot for your Uniswap&nbsp;v3 positions.
           </h1>
-          <p className="max-w-2xl text-sm leading-relaxed text-[#a3a3a3]">
-            Set a range rule once. Anyone can trigger rebalances when conditions are met. You keep
-            custody. All onchain on Arbitrum Sepolia for the demo.
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-[#a3a3a3] md:text-base">
+            Set a range rule once. Anyone can trigger rebalances when price drifts out of band.
+            Fully onchain, trustless, and you keep custody.
           </p>
-          <p className="max-w-2xl text-xs leading-relaxed text-[#888]">
-            See it in action without deposits — or connect your wallet to use the real product.
-          </p>
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
             <Link
               href="/demo"
               className={cn(
                 buttonVariants({ size: "lg" }),
-                "h-10 gap-1.5 px-5 font-mono text-sm text-[#0a0a0a] bg-[#00ff88] hover:bg-[#00dd77]",
+                "h-10 gap-1.5 bg-[#00ff88] px-5 font-mono text-sm text-[#0a0a0a] hover:bg-[#00dd77]",
               )}
             >
-              View Live Demo
+              View live demo
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/positions"
               className={cn(
                 buttonVariants({ size: "lg", variant: "outline" }),
-                "h-10 border-[#262626] bg-transparent px-5 font-mono text-sm text-[#ededed] hover:bg-[#141414]",
+                "h-10 border-[#262626] bg-transparent px-5 font-mono text-sm text-[#ededed] hover:bg-[#141414] hover:text-[#ededed]",
               )}
             >
-              My Positions
+              My positions
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <p className="w-full text-xs text-[#666] sm:w-auto">
-              Use the connect control in the header to sign on real flows.
-            </p>
           </div>
         </section>
 
@@ -136,13 +153,17 @@ export default function Home() {
         <OnchainStatsGrid />
 
         <section>
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">How it works</h2>
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+            How it works
+          </h2>
           <Steps />
         </section>
 
         <section>
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">Why onchain</h2>
-          <div className="max-w-2xl rounded-sm border border-[#262626] bg-[#111] p-4">
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+            Why onchain
+          </h2>
+          <div className="max-w-2xl rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
             <Why />
           </div>
         </section>

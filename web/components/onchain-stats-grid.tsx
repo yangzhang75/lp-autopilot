@@ -21,30 +21,41 @@ export function OnchainStatsGrid() {
   return (
     <section
       className={cn(
-        "grid gap-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4 sm:grid-cols-3",
+        "rounded-sm border border-[#262626] bg-[#0d0d0d] p-5",
         animate && "animate-[stats-fade-in_0.55s_ease-out_both]",
       )}
     >
-      <div>
-        <p className="text-[10px] font-mono uppercase text-[#666]">Onchain stats</p>
-        <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums tracking-tight">
-          {statsLoad ? <StatPulse /> : d0.toString()}
-        </p>
-        <p className="text-xs text-[#888]">PositionDeposited</p>
-      </div>
-      <div>
-        <p className="text-[10px] font-mono uppercase text-[#666]">Rebalances</p>
-        <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums tracking-tight">
-          {statsLoad ? <StatPulse /> : d1.toString()}
-        </p>
-        <p className="text-xs text-[#888]">RebalanceTriggered</p>
-      </div>
-      <div>
-        <p className="text-[10px] font-mono uppercase text-[#666]">Withdrawals</p>
-        <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums tracking-tight">
-          {statsLoad ? <StatPulse /> : d2.toString()}
-        </p>
-        <p className="text-xs text-[#888]">PositionWithdrawn</p>
+      <h2 className="mb-4 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+        Onchain stats
+      </h2>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="border-l-2 border-[#262626] pl-4">
+          <p className="font-mono text-3xl tabular-nums tracking-tight text-[#ededed]">
+            {statsLoad ? <StatPulse /> : d0.toString()}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-[#666]">
+            Deposits
+          </p>
+          <p className="mt-0.5 font-mono text-[10px] text-[#555]">PositionDeposited</p>
+        </div>
+        <div className="border-l-2 border-[#262626] pl-4">
+          <p className="font-mono text-3xl tabular-nums tracking-tight text-[#ededed]">
+            {statsLoad ? <StatPulse /> : d1.toString()}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-[#666]">
+            Rebalances
+          </p>
+          <p className="mt-0.5 font-mono text-[10px] text-[#555]">RebalanceTriggered</p>
+        </div>
+        <div className="border-l-2 border-[#262626] pl-4">
+          <p className="font-mono text-3xl tabular-nums tracking-tight text-[#ededed]">
+            {statsLoad ? <StatPulse /> : d2.toString()}
+          </p>
+          <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-[#666]">
+            Withdrawals
+          </p>
+          <p className="mt-0.5 font-mono text-[10px] text-[#555]">PositionWithdrawn</p>
+        </div>
       </div>
     </section>
   );
