@@ -87,7 +87,7 @@ export default function PositionsPage() {
             {positions.map((p) => (
               <Card
                 key={p.tokenId.toString()}
-                className="border-[#262626] bg-[#111] transition-colors hover:border-[#333]"
+                className="border-[#262626] bg-[#111] transition-all duration-150 ease-out hover:-translate-y-px hover:border-[#00ff88]"
               >
                 <CardHeader className="pb-2">
                   <CardTitle className="text-left font-mono text-sm font-normal text-[#ededed]">
