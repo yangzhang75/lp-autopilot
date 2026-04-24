@@ -1,83 +1,187 @@
 # LP Autopilot
 
-> Autopilot for Uniswap v3 positions. Set a range rule; anyone can trigger the onchain exit when price leaves your band. You keep withdrawal rights. Fully auditable.
+> **Atomic, permissionless rebalancing for Uniswap v3 liquidity positions.**
+> Set a range rule once. When price drifts out, anyone can trigger `checkAndRebalance` —
+> the contract exits the old position, collects fees, and mints a new position centered
+> at the current price, all in a single atomic transaction. You keep custody.
 
-![demo](./docs/demo.gif)
+**Live app**: [lp-autopilot.vercel.app](https://lp-autopilot.vercel.app) ·
+**Interactive demo**: [/demo](https://lp-autopilot.vercel.app/demo) ·
+**Real position on-chain**: [/dashboard/3042](https://lp-autopilot.vercel.app/dashboard/3042) ·
+**Contract on Arbiscan**: [0x33C0D26F…DDa5f](https://sepolia.arbiscan.io/address/0x33C0D26F51229bfD5309A0CE74ef965c247DDa5f) ·
+**Source**: [github.com/yangzhang75/lp-autopilot](https://github.com/yangzhang75/lp-autopilot)
 
-**Live demo**: https://lp-autopilot.vercel.app
-
-**Contract (Arbitrum Sepolia)**: deploy with Foundry, set `NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS` in the frontend, then check the contract on Arbiscan at `https://sepolia.arbiscan.io/address/<your-address>`.
+---
 
 ## The problem
 
-Retail LPs on Uniswap v3 lose money not because concentrated liquidity is bad, but because they stop paying attention. Positions drift out of range, fees stop accruing, impermanent loss compounds. The tools to fix this either require you to trust a centralized bot with your funds, or don't exist for small LPs at all.
+Concentrated-liquidity LPs on Uniswap v3 don't lose because they chose a bad range.
+They lose because they stop paying attention. Price drifts out, fees stop accruing,
+and impermanent loss compounds silently for days.
+
+The existing options force a bad choice:
+
+- **Centralized rebalancer** (hand custody to a bot)
+- **Manual babysitting** (check positions multiple times a day)
+- **Do nothing** (and watch yields die)
+
+---
 
 ## What LP Autopilot does
 
-1. Deposit your Uniswap v3 NFT position into the Autopilot contract
-2. Set a range rule in ticks (a band around the current pool tick)
-3. **V1 behavior:** when price is outside that band, anyone can call `checkAndRebalance()`. The contract collects fees, removes liquidity, and holds ERC20s (the position NFT is burned; there is no automatic re-mint yet). You withdraw via `withdraw()` to receive any remaining ERC20s and, if any, the NFT. If price is still inside the band, the call reverts. You can leave at any time with `withdraw()`.
+1. **Deposit** your Uniswap v3 NFT into the Autopilot contract.
+2. **Set a range rule** — e.g. "rebalance when price drifts beyond ±2000 ticks."
+3. **Anyone triggers** `checkAndRebalance(tokenId)`. If the position is out of range,
+   the contract atomically:
+   - Decreases liquidity to zero on the old NFT
+   - Collects all accumulated fees
+   - Burns the old NFT
+   - Mints a new position centered at the current tick (same range width)
+   - Updates storage so the next rebalance can happen
+4. **You withdraw whenever you want.** NFT + fees + any dust returned to your wallet.
 
-## Why this must be onchain
+Custody stays with the original depositor at every step. No keeper holds your position.
 
-Three properties are non-negotiable for LP strategy tools, and none are available in a web2 architecture:
+---
 
-- **Custody**: the user's NFT never leaves a contract they can withdraw from unilaterally
-- **Trustless execution**: no operator can front-run, censor, or misreport. Rebalance logic is immutable bytecode
-- **Auditable history**: every rebalance is an onchain event anyone can verify against the pool's price history
+## Why this needs to be onchain
 
-A centralized rebalancing service requires trusting the operator with both custody and honest execution. Autopilot removes both trust assumptions.
+| Property | Onchain (LP Autopilot) | Centralized rebalancer |
+|---|---|---|
+| Custody | You retain withdraw rights | Operator holds your assets |
+| Trust | Contract bytecode is immutable | Trust the operator's code + honesty |
+| Audit | Every rebalance is a verifiable event | Operator's word (or unaudited logs) |
+| Front-running | Revert if rule not satisfied | Operator could sandwich |
+
+This is the same core idea as Gamma Strategies / Arrakis Finance, built as a
+focused, auditable primitive for MSX Hackathon.
+
+---
+
+## How "autopilot" works in practice
+
+Autopilot is **permissionless**, not magical:
+
+- The contract enforces the rule — it *will* execute correctly when called.
+- A trigger caller is still needed (you, a keeper bot, or anyone watching the mempool).
+- This is how Gamma, Arrakis, and production DeFi automation all work.
+
+**What's implemented (v1)**: full atomic exit + re-mint in one transaction.
+**What's next**: keeper rewards, Chainlink Automation integration, multi-pool strategies.
+
+---
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  User[User / wallet]
-  FE[Next.js frontend]
-  AP[LPAutopilot]
-  NPM[Uniswap v3 NonfungiblePositionManager]
-  Pool[Uniswap v3 pools]
-  User --> FE
-  FE -->|read / write txs| AP
-  AP -->|positions, collect, burn, transfer| NPM
-  NPM --> Pool
+```
+┌─────────────────┐      ┌─────────────────────────┐
+│    Next.js      │──────│   LPAutopilot.sol       │
+│  Vercel front   │ RPC  │  on Arbitrum Sepolia    │
+└─────────────────┘      └───────────┬─────────────┘
+                                     │
+                       ┌─────────────▼──────────────┐
+                       │  Uniswap v3                │
+                       │  NonfungiblePositionMgr    │
+                       │  + WETH/USDC 0.05% pool    │
+                       └────────────────────────────┘
 ```
 
-## How to run locally
+**Network**: Arbitrum Sepolia (chain ID `421614`).
+
+Key contracts referenced (Arbitrum Sepolia):
+
+- **LP Autopilot**: `0x33C0D26F51229bfD5309A0CE74ef965c247DDa5f`
+- **NPM**: `0x6b2937Bde17889EDCf8fbD8dE31C3C2a70Bc4d65`
+- **Factory**: `0x248AB79Bbb9bC29bB72f7Cd42F17e054Fc40188e`
+- **WETH/USDC 0.05% pool**: `0x6F112d524DC998381C09b4e53C7e5e2cc260f877`
+
+---
+
+## Proof of life
+
+Deployed and exercised on-chain:
+
+- **Deployed**: [tx `0x58760e6fe1978a8bfbe0ebf79d00a4c125d238202b74ad14b24ea1bc52a39ade`](https://sepolia.arbiscan.io/tx/0x58760e6fe1978a8bfbe0ebf79d00a4c125d238202b74ad14b24ea1bc52a39ade)
+- **Minted a real Uniswap v3 position**: tokenId **3042**
+- **Deposited into Autopilot**: [tx `0x1b5a36082e1890ed5fb26e28bf263943cd23d542d26a13f15a1d622eea50d150`](https://sepolia.arbiscan.io/tx/0x1b5a36082e1890ed5fb26e28bf263943cd23d542d26a13f15a1d622eea50d150)
+- **Live dashboard reading onchain state**: [/dashboard/3042](https://lp-autopilot.vercel.app/dashboard/3042)
+
+The frontend indexes contract events; anyone can verify on Arbiscan.
+
+---
+
+## Repo layout
+
+```
+├── contracts/               # Solidity (Foundry)
+│   ├── src/LPAutopilot.sol
+│   ├── test/                # 9 fork tests against Arbitrum mainnet
+│   └── script/
+│       ├── Deploy.s.sol             # deploys to Arbitrum Sepolia
+│       └── SeedDemoPosition.s.sol   # mints + deposits a real position
+├── web/                     # Next.js 14 App Router
+│   ├── app/
+│   │   ├── page.tsx                 # landing
+│   │   ├── demo/                    # interactive client-side simulation
+│   │   ├── positions/               # wallet NFTs + managed positions
+│   │   ├── deposit/[tokenId]/       # deposit flow
+│   │   └── dashboard/[tokenId]/     # live onchain dashboard
+│   └── components/          # ui primitives + onchain components
+└── README.md
+```
+
+---
+
+## Run locally
 
 ```bash
-# Contracts
+# Contracts (requires Foundry)
 cd contracts
-forge install
-# Fork / integration tests use Uniswap on Arbitrum **One** mainnet; use a mainnet RPC, not Arbitrum Sepolia.
-ARBITRUM_MAINNET_RPC_URL="https://arb1.arbitrum.io/rpc" forge test -vvv
-# or: forge test --fork-url arbitrum_mainnet  (if ARBITRUM_MAINNET_RPC_URL is in env; see contracts/foundry.toml)
+forge test --fork-url https://arb1.arbitrum.io/rpc
 
 # Frontend
-cd ../web
-pnpm install
+cd web
+npm install   # or pnpm install
 cp .env.example .env.local
-# set NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID, NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS,
-# and optionally NEXT_PUBLIC_LP_AUTOPILOT_DEPLOY_BLOCK (for event queries on public RPCs)
-pnpm dev
+# Fill in NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS, NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+npm run dev   # or pnpm dev
 ```
 
-Use `npm install` / `npm run dev` if you prefer npm (the repo ships with `package-lock.json`).
+---
 
-## Tech stack
+## Test coverage
 
-- Solidity 0.8.24, Foundry, OpenZeppelin, Uniswap v3
-- Next.js 14, TypeScript, Tailwind, shadcn/ui
-- viem, wagmi v2, RainbowKit v2
-- Deployed on Arbitrum Sepolia, frontend on Vercel
+9/9 tests pass on Arbitrum mainnet fork:
+
+- `testFork_DepositRealNftStoresState`
+- `testDeposit_RevertInvalidRange`
+- `testDeposit_RevertDuplicate`
+- `testCheckAndRebalance_RevertsWhenInRange`
+- `testCheckAndRebalance_SucceedsWhenOutOfRange`
+- `testCheckAndRebalance_MintsNewPositionAfterExit`
+- `testOnERC721Received_RejectsNonNpm`
+- `testWithdraw_OnlyOwner`
+- `testWithdraw_ContractDepositorNoReceiver`
+
+---
 
 ## What's next
 
-- Chainlink Automation integration for true set-and-forget
-- Multi-strategy support (TWAP-based, volatility-based)
-- Mainnet deployment with audit
-- Keeper reward system (small fee to whoever triggers a successful rebalance)
+- **Chainlink Automation** integration → truly hands-off triggers based on on-chain price feeds
+- **Keeper rewards** → small fee paid to whoever triggers a successful rebalance, bootstrapping a decentralized keeper network
+- **Strategy templates** → TWAP-based, volatility-based, fee-target-based rules
+- **Swap-to-rebalance** for one-sided exits (current v1 holds dust; v2 would swap to re-enter with two-sided liquidity)
+- **Mainnet deployment** after an audit
+
+---
 
 ## Built for
 
-MSX Hackathon 2026. Solo project. All code written during the build window (April 18–25, 2026).
+**MSX Hackathon 2026** · Solo project · All code written during the build window
+(April 18 – 25, 2026).
+
+Contract: [0x33C0D26F51229bfD5309A0CE74ef965c247DDa5f](https://sepolia.arbiscan.io/address/0x33C0D26F51229bfD5309A0CE74ef965c247DDa5f)
+Site: https://lp-autopilot.vercel.app
+Live position: https://lp-autopilot.vercel.app/dashboard/3042
+
+---
