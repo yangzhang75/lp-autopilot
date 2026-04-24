@@ -138,6 +138,107 @@ export type AutopilotGlobalStats = {
   withdrawals: number;
 };
 
+export type GlobalActivityRow = {
+  kind: "PositionDeposited" | "RebalanceTriggered" | "PositionWithdrawn";
+  tokenId: bigint;
+  txHash: Hash;
+  blockNumber: bigint;
+  logIndex: number;
+  blockTimestamp: number;
+};
+
+/** Latest contract events across all positions (for landing activity feed). */
+export async function getRecentGlobalActivity(
+  publicClient: PublicClient,
+  limit: number,
+): Promise<GlobalActivityRow[]> {
+  const fromBlock = lpAutopilotFromBlock;
+  const [deposits, rebalances, wds] = await Promise.all([
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "PositionDeposited",
+      fromBlock,
+      toBlock: "latest",
+    }),
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "RebalanceTriggered",
+      fromBlock,
+      toBlock: "latest",
+    }),
+    publicClient.getContractEvents({
+      address: lpAutopilotAddress,
+      abi: lpAutopilotAbi,
+      eventName: "PositionWithdrawn",
+      fromBlock,
+      toBlock: "latest",
+    }),
+  ]);
+
+  const rows: GlobalActivityRow[] = [];
+
+  for (const l of deposits) {
+    if (!l.blockNumber || !l.args || l.transactionHash == null) continue;
+    const a = l.args as { tokenId: bigint };
+    rows.push({
+      kind: "PositionDeposited",
+      tokenId: a.tokenId,
+      txHash: l.transactionHash,
+      blockNumber: l.blockNumber,
+      logIndex: Number(l.logIndex ?? 0),
+      blockTimestamp: 0,
+    });
+  }
+  for (const l of rebalances) {
+    if (!l.blockNumber || !l.args || l.transactionHash == null) continue;
+    const a = l.args as { positionKey: bigint };
+    rows.push({
+      kind: "RebalanceTriggered",
+      tokenId: a.positionKey,
+      txHash: l.transactionHash,
+      blockNumber: l.blockNumber,
+      logIndex: Number(l.logIndex ?? 0),
+      blockTimestamp: 0,
+    });
+  }
+  for (const l of wds) {
+    if (!l.blockNumber || !l.args || l.transactionHash == null) continue;
+    const a = l.args as { tokenId: bigint };
+    rows.push({
+      kind: "PositionWithdrawn",
+      tokenId: a.tokenId,
+      txHash: l.transactionHash,
+      blockNumber: l.blockNumber,
+      logIndex: Number(l.logIndex ?? 0),
+      blockTimestamp: 0,
+    });
+  }
+
+  rows.sort((a, b) => {
+    if (a.blockNumber !== b.blockNumber) {
+      return a.blockNumber > b.blockNumber ? -1 : 1;
+    }
+    return b.logIndex - a.logIndex;
+  });
+
+  const top = rows.slice(0, limit);
+  const blockNums = Array.from(new Set(top.map((r) => r.blockNumber)));
+  const blocks = await Promise.all(
+    blockNums.map((bn) => publicClient.getBlock({ blockNumber: bn })),
+  );
+  const tsMap = new Map<bigint, number>();
+  for (let i = 0; i < blockNums.length; i++) {
+    tsMap.set(blockNums[i]!, Number(blocks[i]!.timestamp));
+  }
+
+  return top.map((r) => ({
+    ...r,
+    blockTimestamp: tsMap.get(r.blockNumber) ?? 0,
+  }));
+}
+
 export async function getAutopilotGlobalStats(publicClient: PublicClient): Promise<AutopilotGlobalStats> {
   const fromBlock = lpAutopilotFromBlock;
   const [deposits, rebalances, wds] = await Promise.all([
