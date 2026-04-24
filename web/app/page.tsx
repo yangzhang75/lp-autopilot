@@ -7,8 +7,7 @@ import { LiveOnchainActivity } from "@/components/live-onchain-activity";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WrongNetworkBanner } from "@/components/wrong-network-banner";
-import { useAutopilotGlobalStats } from "@/lib/hooks/useAutopilotGlobalStats";
-import { isAutopilotConfigured } from "@/lib/contract";
+import { OnchainStatsGrid } from "@/components/onchain-stats-grid";
 
 function Steps() {
   return (
@@ -37,10 +36,14 @@ function Steps() {
         <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-sm border border-[#333] text-[#00ff88]">
           <RefreshCw className="h-4 w-4" aria-hidden />
         </div>
-        <h3 className="font-mono text-sm text-[#ededed]">3. Exit on trigger (v1)</h3>
+        <h3 className="font-mono text-sm text-[#ededed]">3. Atomic rebalance</h3>
         <p className="mt-1 text-xs leading-relaxed text-[#888]">
-          When price leaves your band, anyone can run the exit path: fees collected, liquidity removed, tokens held in
-          Autopilot. Withdraw anytime. Ongoing re-mint is planned.
+          When price drifts out of your range, anyone can call{" "}
+          <code className="rounded-sm bg-[#1a1a1a] px-1 py-px font-mono text-[10px] text-[#a3a3a3]">
+            checkAndRebalance
+          </code>
+          . In a single atomic transaction, the contract exits the old position, collects fees, and mints a new position
+          centered at the current price. Fully on-chain, trustless, and auditable.
         </p>
       </div>
     </div>
@@ -76,13 +79,21 @@ function Why() {
 }
 
 export default function Home() {
-  const { data: stats, isLoading: statsLoad } = useAutopilotGlobalStats();
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader />
       <WrongNetworkBanner className="mx-3 mt-2" />
       <main className="mx-auto w-full max-w-4xl flex-1 space-y-12 px-3 py-8">
-        <section className="space-y-4">
+        <section className="relative space-y-4 overflow-hidden rounded-sm px-1 py-1">
+          <div
+            className="pointer-events-none absolute inset-0 -z-10 rounded-sm opacity-[0.55]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0)",
+              backgroundSize: "32px 32px",
+            }}
+            aria-hidden
+          />
           <h1 className="font-sans text-3xl font-semibold leading-tight tracking-tight text-[#ededed] md:text-4xl">
             Autopilot for your Uniswap v3 positions.
           </h1>
@@ -122,31 +133,7 @@ export default function Home() {
 
         <LiveOnchainActivity />
 
-        {isAutopilotConfigured && (
-          <section className="grid gap-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4 sm:grid-cols-3">
-            <div>
-              <p className="text-[10px] font-mono uppercase text-[#666]">Onchain stats</p>
-              <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
-                {statsLoad ? "—" : (stats?.positionDeposits ?? 0).toString()}
-              </p>
-              <p className="text-xs text-[#888]">PositionDeposited</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-mono uppercase text-[#666]">Rebalances</p>
-              <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
-                {statsLoad ? "—" : (stats?.rebalances ?? 0).toString()}
-              </p>
-              <p className="text-xs text-[#888]">RebalanceTriggered</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-mono uppercase text-[#666]">Withdrawals</p>
-              <p className="mt-1 font-mono text-2xl text-[#ededed] tabular-nums">
-                {statsLoad ? "—" : (stats?.withdrawals ?? 0).toString()}
-              </p>
-              <p className="text-xs text-[#888]">PositionWithdrawn</p>
-            </div>
-          </section>
-        )}
+        <OnchainStatsGrid />
 
         <section>
           <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">How it works</h2>
