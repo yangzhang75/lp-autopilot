@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -11,26 +11,78 @@ import {
   YAxis,
 } from "recharts";
 import { AppHeader } from "@/components/app-header";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { isAutopilotConfigured, lpAutopilotAddress } from "@/lib/contract";
 
-const DEMO_TOKEN_ID = "1234";
-const CURRENT_PRICE = 3247.18;
-const CENTER_PRICE = 3150.0;
-const DRIFT_PCT = 3.08;
-const FEES_USD = 47.23;
-const RANGE_LOW = 2961;
-const RANGE_HIGH = 3339;
+const ARBISCAN_TX = (h: string) => `https://sepolia.arbiscan.io/tx/${h}`;
+const ARBISCAN_CONTRACT = (a: `0x${string}`) =>
+  `https://sepolia.arbiscan.io/address/${a}`;
 
-/** Wider domain so red “out of band” zones are visible on the strip */
-const STRIP_MIN = 2880;
-const STRIP_MAX = 3420;
-
-function pctOnStrip(price: number) {
-  return ((price - STRIP_MIN) / (STRIP_MAX - STRIP_MIN)) * 100;
+interface DemoEvent {
+  id: string;
+  type: "Deposited" | "RebalanceTriggered" | "Withdrawn";
+  when: string;
+  detail: string;
+  txHash: `0x${string}`;
 }
 
-const FEE_CHART_MOCK = (() => {
+interface DemoPosition {
+  tokenId: number;
+  currentPrice: number;
+  centerPrice: number;
+  rangePercent: number;
+  feesEarned: number;
+  status: "IN_RANGE" | "OUT_OF_RANGE" | "WITHDRAWN";
+  events: DemoEvent[];
+}
+
+type FeePoint = { at: number; usd: number; label: string };
+
+function mockTxHash(): `0x${string}` {
+  const chars = "0123456789abcdef";
+  let s = "0x";
+  for (let i = 0; i < 64; i++) {
+    s += chars[Math.floor(Math.random() * 16)]!;
+  }
+  return s as `0x${string}`;
+}
+
+function rangeBounds(center: number, rangePercent: number) {
+  const low = center * (1 - rangePercent / 100);
+  const high = center * (1 + rangePercent / 100);
+  return { low, high };
+}
+
+function stripDomain(low: number, high: number, current: number) {
+  const span = high - low;
+  const pad = span * 0.35;
+  const stripMin = Math.min(low - pad, current - span * 0.1);
+  const stripMax = Math.max(high + pad, current + span * 0.1);
+  return { stripMin, stripMax };
+}
+
+function pctOnStrip(price: number, stripMin: number, stripMax: number) {
+  if (stripMax <= stripMin) return 50;
+  return ((price - stripMin) / (stripMax - stripMin)) * 100;
+}
+
+function computePriceStatus(
+  currentPrice: number,
+  centerPrice: number,
+  rangePercent: number,
+): "IN_RANGE" | "OUT_OF_RANGE" {
+  const { low, high } = rangeBounds(centerPrice, rangePercent);
+  if (currentPrice < low || currentPrice > high) return "OUT_OF_RANGE";
+  return "IN_RANGE";
+}
+
+function driftPct(currentPrice: number, centerPrice: number) {
+  if (centerPrice === 0) return 0;
+  return ((currentPrice - centerPrice) / centerPrice) * 100;
+}
+
+const INITIAL_CHART: FeePoint[] = (() => {
   const day = 86_400_000;
   const base = Date.now() - 6 * day;
   return [
@@ -45,82 +97,188 @@ const FEE_CHART_MOCK = (() => {
   ];
 })();
 
-const DEMO_EVENTS = [
+const INITIAL_EVENTS: DemoEvent[] = [
   {
-    kind: "Deposited",
-    ago: "7 days ago",
-    detail: `tokenId #${DEMO_TOKEN_ID}`,
-    tx: "0x9a2f4c8e1d0b7a3f5c9e2d6b8a4f1c0e7d3b9a5f2c8e4d1b7a3f9c5e2d8b6a4",
+    id: "init-1",
+    type: "Deposited",
+    when: "7 days ago",
+    detail: "tokenId #1234",
+    txHash:
+      "0x9a2f4c8e1d0b7a3f5c9e2d6b8a4f1c0e7d3b9a5f2c8e4d1b7a3f9c5e2d8b6a4" as `0x${string}`,
   },
   {
-    kind: "RebalanceTriggered",
-    ago: "3 days ago",
-    detail: "old center tick 3050 → new center 3150",
-    tx: "0x7b3e9a1f5c8d2b6e4a0f9c3d7b1e5a8f2c6d0b4e8a3f7c1d5b9e2a6f0c4d8b2",
+    id: "init-2",
+    type: "RebalanceTriggered",
+    when: "3 days ago",
+    detail: "old center $2,961 → new center $3,150",
+    txHash:
+      "0x7b3e9a1f5c8d2b6e4a0f9c3d7b1e5a8f2c6d0b4e8a3f7c1d5b9e2a6f0c4d8b2" as `0x${string}`,
   },
   {
-    kind: "RebalanceTriggered",
-    ago: "6 hours ago",
-    detail: "old center tick 3150 → new center 3247",
-    tx: "0x4d8a2f6c0e9b3d7a1f5c8e2b6d0a4f9c3e7b1d5a9f2c6e0b4d8a3f7c1e5b9d2a6",
+    id: "init-3",
+    type: "RebalanceTriggered",
+    when: "6 hours ago",
+    detail: "old center $3,150 → new center $3,247.18",
+    txHash:
+      "0x4d8a2f6c0e9b3d7a1f5c8e2b6d0a4f9c3e7b1d5a9f2c6e0b4d8a3f7c1e5b9d2a6" as `0x${string}`,
   },
-] as const;
+];
 
-const ARBISCAN = "https://sepolia.arbiscan.io/tx";
-
-function DemoRangeStrip() {
-  const pLo = pctOnStrip(RANGE_LOW);
-  const pHi = pctOnStrip(RANGE_HIGH);
-  const pCur = pctOnStrip(CURRENT_PRICE);
-  return (
-    <div className="w-full">
-      <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[#666]">
-        Price vs. autopilot band (USD, illustrative)
-      </p>
-      <svg
-        viewBox="0 0 400 56"
-        className="h-14 w-full max-w-3xl border border-[#262626] bg-[#0d0d0d]"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label="Range: green band is in-range; red is outside bounds"
-      >
-        <rect x="0" y="8" width={(pLo / 100) * 400} height="40" fill="rgba(255,68,68,0.35)" />
-        <rect
-          x={(pHi / 100) * 400}
-          y="8"
-          width={400 - (pHi / 100) * 400}
-          height="40"
-          fill="rgba(255,68,68,0.35)"
-        />
-        <rect
-          x={(pLo / 100) * 400}
-          y="8"
-          width={((pHi - pLo) / 100) * 400}
-          height="40"
-          fill="rgba(0,255,136,0.12)"
-        />
-        <line
-          x1={(pCur / 100) * 400}
-          y1="4"
-          x2={(pCur / 100) * 400}
-          y2="52"
-          stroke="#00ff88"
-          strokeWidth="2"
-        />
-      </svg>
-      <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-[#666]">
-        <span>{STRIP_MIN}</span>
-        <span>{STRIP_MAX}</span>
-      </div>
-    </div>
-  );
+function createInitialPosition(): DemoPosition {
+  return {
+    tokenId: 1234,
+    currentPrice: 3247.18,
+    centerPrice: 3150.0,
+    rangePercent: 6,
+    feesEarned: 47.23,
+    status: "IN_RANGE",
+    events: INITIAL_EVENTS.map((e) => ({ ...e })),
+  };
 }
 
 export default function DemoPage() {
+  const [pos, setPos] = useState<DemoPosition>(() => createInitialPosition());
+  const [chartPoints, setChartPoints] = useState<FeePoint[]>(() =>
+    INITIAL_CHART.map((p) => ({ ...p })),
+  );
+  const [highlightEventId, setHighlightEventId] = useState<string | null>(null);
+  const [statusFlash, setStatusFlash] = useState(false);
+
+  useEffect(() => {
+    if (!highlightEventId) return;
+    const t = window.setTimeout(() => setHighlightEventId(null), 2000);
+    return () => window.clearTimeout(t);
+  }, [highlightEventId]);
+
+  const { low: rangeLow, high: rangeHigh } = useMemo(
+    () => rangeBounds(pos.centerPrice, pos.rangePercent),
+    [pos.centerPrice, pos.rangePercent],
+  );
+
+  const { stripMin, stripMax } = useMemo(
+    () => stripDomain(rangeLow, rangeHigh, pos.currentPrice),
+    [rangeLow, rangeHigh, pos.currentPrice],
+  );
+
+  const pLo = pctOnStrip(rangeLow, stripMin, stripMax);
+  const pHi = pctOnStrip(rangeHigh, stripMin, stripMax);
+  const pCur = pctOnStrip(pos.currentPrice, stripMin, stripMax);
+
+  const drift = driftPct(pos.currentPrice, pos.centerPrice);
+
+  const onSpike = () => {
+    setPos((p) => {
+      if (p.status === "WITHDRAWN") return p;
+      const nextPrice = p.currentPrice * 1.08;
+      const status = computePriceStatus(nextPrice, p.centerPrice, p.rangePercent);
+      return { ...p, currentPrice: nextPrice, status };
+    });
+  };
+
+  const onDrop = () => {
+    setPos((p) => {
+      if (p.status === "WITHDRAWN") return p;
+      const nextPrice = p.currentPrice * 0.92;
+      const status = computePriceStatus(nextPrice, p.centerPrice, p.rangePercent);
+      return { ...p, currentPrice: nextPrice, status };
+    });
+  };
+
+  const onNudge = () => {
+    const f = 0.99 + Math.random() * 0.02;
+    setPos((p) => {
+      if (p.status === "WITHDRAWN") return p;
+      const nextPrice = p.currentPrice * f;
+      const status = computePriceStatus(nextPrice, p.centerPrice, p.rangePercent);
+      return { ...p, currentPrice: nextPrice, status };
+    });
+  };
+
+  const onReset = () => {
+    setPos(createInitialPosition());
+    setChartPoints(INITIAL_CHART.map((p) => ({ ...p })));
+    setHighlightEventId(null);
+    setStatusFlash(false);
+  };
+
+  const onRebalance = () => {
+    if (pos.status !== "OUT_OF_RANGE") return;
+    const oldCenter = pos.centerPrice;
+    const newCenter = pos.currentPrice;
+    const feeBump = 8.47;
+    const newFees = pos.feesEarned + feeBump;
+    const newTokenId = pos.tokenId + 1;
+    const id = `ev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const newEv: DemoEvent = {
+      id,
+      type: "RebalanceTriggered",
+      when: "just now",
+      detail: `old center $${oldCenter.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → new center $${newCenter.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      txHash: mockTxHash(),
+    };
+    setPos((p) => ({
+      ...p,
+      tokenId: newTokenId,
+      centerPrice: newCenter,
+      feesEarned: newFees,
+      status: "IN_RANGE",
+      events: [newEv, ...p.events],
+    }));
+    setChartPoints((pts) => [...pts, { at: Date.now(), usd: newFees, label: "Rebalance" }]);
+    setHighlightEventId(id);
+    setStatusFlash(true);
+  };
+
+  useEffect(() => {
+    if (!statusFlash) return;
+    const t = window.setTimeout(() => setStatusFlash(false), 650);
+    return () => window.clearTimeout(t);
+  }, [statusFlash]);
+
+  const onWithdraw = () => {
+    if (pos.status === "WITHDRAWN") return;
+    const notion = pos.feesEarned + 18420;
+    const id = `ev-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const newEv: DemoEvent = {
+      id,
+      type: "Withdrawn",
+      when: "just now",
+      detail: `received ~$${notion.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} worth of tokens`,
+      txHash: mockTxHash(),
+    };
+    setPos((p) => ({ ...p, status: "WITHDRAWN", events: [newEv, ...p.events] }));
+    setHighlightEventId(id);
+  };
+
+  const simLocked = pos.status === "WITHDRAWN";
+  const rebalanceEnabled = pos.status === "OUT_OF_RANGE";
+  const withdrawEnabled = pos.status !== "WITHDRAWN";
+
+  const statusLabel =
+    pos.status === "WITHDRAWN"
+      ? "WITHDRAWN"
+      : pos.status === "OUT_OF_RANGE"
+        ? "OUT OF RANGE"
+        : "IN RANGE";
+
+  const statusColor =
+    pos.status === "WITHDRAWN"
+      ? "text-[#888]"
+      : pos.status === "OUT_OF_RANGE"
+        ? "text-[#ff4444]"
+        : "text-[#00ff88]";
+
+  const driftColor =
+    drift >= 0 ? (drift > 0 ? "text-[#00ff88]" : "text-[#a3a3a3]") : "text-[#ff4444]";
+
+  const arbHref = isAutopilotConfigured
+    ? ARBISCAN_CONTRACT(lpAutopilotAddress)
+    : "https://sepolia.arbiscan.io/";
+
   return (
     <div className="flex min-h-screen flex-col bg-[#0a0a0a]">
       <AppHeader />
-      <main className="mx-auto w-full max-w-4xl flex-1 space-y-10 px-3 py-6">
+      <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 px-3 py-6">
         <div
           className="rounded-sm border border-[#262626] bg-[#141414] px-3 py-2 font-mono text-xs text-[#a3a3a3]"
           role="status"
@@ -129,34 +287,133 @@ export default function DemoPage() {
           NFT to see your own dashboard.
         </div>
 
-        <section className="space-y-4 rounded-sm border border-[#262626] bg-[#141414] p-4">
+        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4 transition-colors">
+          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
+            Demo controls
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={simLocked}
+              title={simLocked ? "Reset demo to simulate price again" : "Increase mock price by 8%"}
+              onClick={onSpike}
+              className="h-9 border-[#262626] font-mono text-xs text-[#ededed] transition-colors hover:border-[#00ff88] hover:bg-[#141414] hover:text-[#00ff88] disabled:opacity-40"
+            >
+              Simulate Price Spike (+8%)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={simLocked}
+              title={simLocked ? "Reset demo to simulate price again" : "Decrease mock price by 8%"}
+              onClick={onDrop}
+              className="h-9 border-[#262626] font-mono text-xs text-[#ededed] transition-colors hover:border-[#00ff88] hover:bg-[#141414] hover:text-[#00ff88] disabled:opacity-40"
+            >
+              Simulate Price Drop (−8%)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={simLocked}
+              title={simLocked ? "Reset demo to simulate price again" : "Random ±1% nudge"}
+              onClick={onNudge}
+              className="h-9 border-[#262626] font-mono text-xs text-[#ededed] transition-colors hover:border-[#00ff88] hover:bg-[#141414] hover:text-[#00ff88] disabled:opacity-40"
+            >
+              Nudge Price (±1%)
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onReset}
+              className="h-9 border-[#333] font-mono text-xs text-[#a3a3a3] transition-colors hover:border-[#ededed] hover:bg-[#1a1a1a] hover:text-[#ededed]"
+            >
+              Reset Demo
+            </Button>
+          </div>
+        </section>
+
+        <section
+          className={cn(
+            "space-y-4 rounded-sm border border-[#262626] bg-[#141414] p-4 transition-[border-color,background-color] duration-300",
+            statusFlash && "demo-status-flash",
+          )}
+        >
           <div className="flex flex-col gap-2 border-b border-[#262626] pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-widest text-[#666]">Status</p>
               <h1 className="font-mono text-2xl font-semibold tracking-tight text-[#ededed] md:text-4xl">
-                Position #{DEMO_TOKEN_ID}{" "}
-                <span className="text-[#00ff88]">— IN RANGE</span>
+                Position #{pos.tokenId}{" "}
+                <span className={statusColor}>— {statusLabel}</span>
               </h1>
             </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Metric label="Current price" value={`$${CURRENT_PRICE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-            <Metric label="Center price" value={`$${CENTER_PRICE.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-            <Metric label="Drift" value={`+${DRIFT_PCT.toFixed(2)}%`} accent="text-[#00ff88]" />
-            <Metric label="Fees earned" value={`$${FEES_USD.toFixed(2)}`} />
+            <Metric
+              label="Current price"
+              value={`$${pos.currentPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            />
+            <Metric
+              label="Center price"
+              value={`$${pos.centerPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            />
+            <Metric
+              label="Drift"
+              value={`${drift >= 0 ? "+" : ""}${drift.toFixed(2)}%`}
+              accent={driftColor}
+            />
+            <Metric
+              label="Fees earned"
+              value={`$${pos.feesEarned.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            />
             <Metric
               label="Range"
-              value={`$${RANGE_LOW.toLocaleString()} – $${RANGE_HIGH.toLocaleString()}`}
+              value={`$${rangeLow.toLocaleString("en-US", { maximumFractionDigits: 0 })} – $${rangeHigh.toLocaleString("en-US", { maximumFractionDigits: 0 })} (±${pos.rangePercent}%)`}
               className="sm:col-span-2 lg:col-span-2"
             />
           </div>
         </section>
 
+        {pos.status === "WITHDRAWN" && (
+          <div
+            className="rounded-sm border border-[#262626] bg-[#141414] px-3 py-2 font-mono text-sm text-[#a3a3a3]"
+            role="status"
+          >
+            Position withdrawn. Tokens returned to your wallet.
+          </div>
+        )}
+
         <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
           <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
             Range visualization
           </h2>
-          <DemoRangeStrip />
+          <div className="w-full">
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[#666]">
+              Price vs. autopilot band (USD, illustrative)
+            </p>
+            <div className="relative h-14 w-full max-w-3xl border border-[#262626] bg-[#0d0d0d]">
+              <div
+                className="absolute bottom-2 top-2 bg-[rgba(255,68,68,0.35)] transition-all duration-300"
+                style={{ left: 0, width: `${Math.max(0, pLo)}%` }}
+              />
+              <div
+                className="absolute bottom-2 top-2 bg-[rgba(255,68,68,0.35)] transition-all duration-300"
+                style={{ left: `${Math.min(100, pHi)}%`, width: `${Math.max(0, 100 - pHi)}%` }}
+              />
+              <div
+                className="absolute bottom-2 top-2 bg-[rgba(0,255,136,0.12)] transition-all duration-300"
+                style={{ left: `${pLo}%`, width: `${Math.max(0, pHi - pLo)}%` }}
+              />
+              <div
+                className="demo-range-marker pointer-events-none absolute bottom-1 top-1 w-0.5 -translate-x-1/2 bg-[#00ff88]"
+                style={{ left: `${Math.min(100, Math.max(0, pCur))}%` }}
+              />
+            </div>
+            <div className="mt-1 flex justify-between font-mono text-[10px] tabular-nums text-[#666]">
+              <span>{stripMin.toFixed(0)}</span>
+              <span>{stripMax.toFixed(0)}</span>
+            </div>
+          </div>
         </section>
 
         <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
@@ -165,7 +422,7 @@ export default function DemoPage() {
           </h2>
           <div className="h-64 w-full rounded-sm border border-[#262626] bg-[#0d0d0d] p-1">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <LineChart data={FEE_CHART_MOCK} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
+              <LineChart data={chartPoints} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
                 <CartesianGrid stroke="#262626" strokeDasharray="4 4" />
                 <XAxis
                   dataKey="at"
@@ -185,11 +442,9 @@ export default function DemoPage() {
                 <Tooltip
                   content={({ active, payload }) => {
                     if (!active || !payload?.length) return null;
-                    const row = payload[0].payload as (typeof FEE_CHART_MOCK)[number];
+                    const row = payload[0].payload as FeePoint;
                     return (
-                      <div
-                        className="rounded-sm border border-[#333] bg-[#111] px-2 py-1.5 font-mono text-xs text-[#ededed]"
-                      >
+                      <div className="rounded-sm border border-[#333] bg-[#111] px-2 py-1.5 font-mono text-xs text-[#ededed]">
                         <div className="text-[#888]">{row.label}</div>
                         <div>${Number(row.usd).toFixed(2)} cumulative</div>
                       </div>
@@ -208,7 +463,7 @@ export default function DemoPage() {
             </ResponsiveContainer>
           </div>
           <p className="mt-2 font-mono text-[10px] text-[#555]">
-            Mock series: step-ups at rebalance events (3 days ago and 6 hours ago).
+            Chart adds a step when you trigger a rebalance in this demo.
           </p>
         </section>
 
@@ -227,19 +482,25 @@ export default function DemoPage() {
                 </tr>
               </thead>
               <tbody>
-                {DEMO_EVENTS.map((e) => (
-                  <tr key={e.tx} className="border-b border-[#1a1a1a]">
-                    <td className="py-2 pr-3 text-[#ededed]">{e.kind}</td>
-                    <td className="py-2 pr-3 tabular-nums text-[#a3a3a3]">{e.ago}</td>
+                {pos.events.map((e) => (
+                  <tr
+                    key={e.id}
+                    className={cn(
+                      "border-b border-[#1a1a1a] transition-colors duration-300",
+                      highlightEventId === e.id && "demo-new-event-row",
+                    )}
+                  >
+                    <td className="py-2 pr-3 text-[#ededed]">{e.type}</td>
+                    <td className="py-2 pr-3 tabular-nums text-[#a3a3a3]">{e.when}</td>
                     <td className="py-2 pr-3 text-[#888]">{e.detail}</td>
                     <td className="py-2 text-right">
                       <a
-                        className="break-all text-[#888] hover:text-[#00ff88]"
-                        href={`${ARBISCAN}/${e.tx}`}
+                        className="break-all text-[#888] transition-colors hover:text-[#00ff88]"
+                        href={ARBISCAN_TX(e.txHash)}
                         target="_blank"
                         rel="noreferrer"
                       >
-                        {e.tx.slice(0, 14)}…{e.tx.slice(-8)}
+                        {e.txHash.slice(0, 14)}…{e.txHash.slice(-8)}
                       </a>
                     </td>
                   </tr>
@@ -252,34 +513,58 @@ export default function DemoPage() {
         <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
           <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">Actions</h2>
           <div className="flex max-w-md flex-col gap-2">
-            <span title="Demo mode — this is a simulation">
+            <span
+              title={
+                pos.status === "WITHDRAWN"
+                  ? "Demo ended — reset to try again"
+                  : pos.status === "IN_RANGE"
+                    ? "Price is within range — rebalance not needed"
+                    : "Simulated rebalance: center follows price, fees bump, back in range"
+              }
+            >
               <Button
                 type="button"
-                disabled
-                className="h-9 w-full max-w-xs font-mono text-xs text-[#666] opacity-60"
+                disabled={!rebalanceEnabled || pos.status === "WITHDRAWN"}
+                onClick={onRebalance}
+                className={cn(
+                  "h-9 w-full max-w-xs font-mono text-xs transition-colors",
+                  rebalanceEnabled
+                    ? "bg-[#00ff88] text-[#0a0a0a] hover:bg-[#00dd77]"
+                    : "text-[#666] opacity-50",
+                )}
               >
                 Trigger Rebalance
               </Button>
             </span>
-            <span title="Demo mode — this is a simulation">
+            <span
+              title={
+                pos.status === "WITHDRAWN"
+                  ? "Already withdrawn — reset demo to continue"
+                  : "Simulated full exit to wallet"
+              }
+            >
               <Button
                 type="button"
                 variant="outline"
-                disabled
-                className="h-9 w-full max-w-xs font-mono text-xs opacity-60"
+                disabled={!withdrawEnabled}
+                onClick={onWithdraw}
+                className="h-9 w-full max-w-xs border-[#262626] font-mono text-xs text-[#ededed] transition-colors hover:border-[#ededed] hover:bg-[#1a1a1a] disabled:opacity-40"
               >
                 Withdraw
               </Button>
             </span>
-            <Link
-              href="/positions"
-              className={cn(
-                buttonVariants({ variant: "ghost", size: "sm" }),
-                "mt-1 w-fit px-0 font-mono text-xs text-[#00ff88] hover:text-[#00dd77]",
-              )}
-            >
-              Switch to real mode →
-            </Link>
+            <p className="mt-2 max-w-md font-mono text-[11px] leading-relaxed text-[#888]">
+              Real mode requires a Uniswap v3 position on your wallet. See the{" "}
+              <a
+                className="text-[#00ff88] underline decoration-[#333] underline-offset-2 transition-colors hover:text-[#00dd77]"
+                href={arbHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                contract on Arbiscan
+              </a>{" "}
+              for deployment details.
+            </p>
           </div>
         </section>
       </main>
