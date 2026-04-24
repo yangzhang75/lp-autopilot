@@ -176,26 +176,35 @@ export default function DepositPage() {
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader />
-      <main className="flex-1 p-3">
+      <div className="border-b border-[#262626] bg-[#0a0a0a]">
+        <div className="mx-auto w-full max-w-6xl px-3 py-2 md:px-4">
+          <h1 className="font-mono text-sm text-[#a3a3a3]">
+            Deposit
+            {tokenId !== undefined ? (
+              <span className="ml-1.5 text-[#ededed]">#{tokenId.toString()}</span>
+            ) : null}
+          </h1>
+        </div>
+      </div>
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-4 px-3 py-5 md:px-4 md:py-6">
         <WrongNetworkBanner />
-        <h1 className="mb-3 font-mono text-sm text-[#a3a3a3]">Deposit position</h1>
         {!isAutopilotConfigured && (
-          <p className="mb-2 font-mono text-xs text-amber-200/90">
+          <p className="font-mono text-xs text-amber-200/90">
             Configure <span className="text-[#ededed]">NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS</span> first.
           </p>
         )}
         {tokenId === undefined && (
-          <p className="font-mono text-xs text-red-400">Invalid position id in URL.</p>
+          <p className="font-mono text-xs text-red-400/90">Invalid position id in URL.</p>
         )}
         {isConnected && tokenId !== undefined && owner != null && !ownerOk && (
-          <p className="font-mono text-xs text-red-400">
+          <p className="font-mono text-xs text-red-400/90">
             This position NFT is not in your connected wallet.
           </p>
         )}
 
         {isConnected && tokenId && pos && ownerOk && !wrongNetwork && (
-          <div className="grid max-w-lg gap-3">
-            <Card className="border-[#262626] bg-[#111]">
+          <div className="grid max-w-lg gap-4">
+            <Card className="border-[#262626] bg-[#0d0d0d]">
               <CardHeader className="pb-2">
                 <CardTitle className="font-mono text-sm font-normal text-[#ededed]">
                   #{tokenId.toString()}{" "}
@@ -219,73 +228,83 @@ export default function DepositPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[#666]">Liquidity</span>
-                  <span className="text-right tabular-nums">{pos.liquidity.toString()}</span>
+                  <span className="truncate text-right tabular-nums">{pos.liquidity.toString()}</span>
                 </div>
               </CardContent>
             </Card>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="rt" className="font-mono text-xs text-[#a3a3a3]">
+            <div className="space-y-2 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4">
+              <Label htmlFor="rt" className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
                 Range ticks
               </Label>
               <Input
                 id="rt"
                 value={rangeStr}
                 onChange={(e) => setRangeStr(e.target.value)}
-                className="h-8 max-w-[200px] border-[#333] bg-[#0a0a0a] font-mono text-xs"
+                className="h-9 max-w-[200px] border-[#262626] bg-[#080808] font-mono text-sm tabular-nums"
               />
-              <p className="text-[10px] leading-relaxed text-[#666]">
-                Autopilot tracks pool price; when the tick drifts more than this many ticks either side
+              <p className="text-[11px] leading-relaxed text-[#666]">
+                Autopilot tracks pool price. When the tick drifts more than this many ticks either side
                 of the <span className="text-[#a3a3a3]">center tick at deposit</span>, a rebalance is
-                possible. 600 is roughly a ~6% move each side in price (only an approximation).
+                possible. 600 ≈ ±6% move in price (approximation).
               </p>
+              {rangeTicks === null && (
+                <p className="font-mono text-xs text-red-400/90">
+                  Enter a valid positive int24 (e.g. 600).
+                </p>
+              )}
             </div>
 
-            {rangeTicks === null && <p className="text-xs text-red-400/90">Enter a valid positive int24 (e.g. 600).</p>}
+            <div className="space-y-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4">
+              <div className="space-y-1.5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">Step 1 · Approve</p>
+                <Button
+                  type="button"
+                  className="h-9 w-full font-mono text-xs"
+                  onClick={onApprove}
+                  disabled={!isAutopilotConfigured || wrongNetwork || approved || busy || rangeTicks === null}
+                >
+                  {approved ? (
+                    "✓ Autopilot can move this NFT"
+                  ) : busy && pending === "approve" ? (
+                    <TxPendingLabel label="Approving" />
+                  ) : (
+                    "Approve Autopilot on NFT"
+                  )}
+                </Button>
+              </div>
 
-            <div className="flex flex-col gap-2 border-t border-[#262626] pt-3">
-              <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">Step 1</p>
-              <Button
-                type="button"
-                className="h-8 w-full max-w-sm font-mono text-xs"
-                onClick={onApprove}
-                disabled={!isAutopilotConfigured || wrongNetwork || approved || busy || rangeTicks === null}
-              >
-                {approved ? (
-                  "Autopilot can move this NFT"
-                ) : busy && pending === "approve" ? (
-                  <TxPendingLabel label="Approving" />
-                ) : (
-                  "Approve Autopilot on NFT"
-                )}
-              </Button>
+              <div className="space-y-1.5 border-t border-[#1f1f1f] pt-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">Step 2 · Deposit</p>
+                <Button
+                  type="button"
+                  className="h-9 w-full font-mono text-xs"
+                  onClick={onDeposit}
+                  disabled={!isAutopilotConfigured || wrongNetwork || !approved || busy || rangeTicks === null}
+                >
+                  {busy && pending === "deposit" ? (
+                    <TxPendingLabel label={isConfirming ? "Confirming" : "Depositing"} />
+                  ) : (
+                    "Deposit to Autopilot"
+                  )}
+                </Button>
+              </div>
 
-              <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">Step 2</p>
-              <Button
-                type="button"
-                className="h-8 w-full max-w-sm font-mono text-xs"
-                onClick={onDeposit}
-                disabled={!isAutopilotConfigured || wrongNetwork || !approved || busy || rangeTicks === null}
-              >
-                {busy && pending === "deposit" ? (
-                  <TxPendingLabel label={isConfirming ? "Confirming" : "Depositing"} />
-                ) : (
-                  "Deposit to Autopilot"
-                )}
-              </Button>
+              {isConfirming && (
+                <div
+                  className="h-1 w-full animate-pulse rounded-sm bg-[#262626]"
+                  title="Transaction confirming"
+                />
+              )}
+              {displayTxError && (
+                <p className="whitespace-pre-wrap break-words font-mono text-xs text-red-400/90">
+                  {formatTxError(displayTxError)}
+                </p>
+              )}
+              {reverted && !displayTxError && (
+                <p className="font-mono text-xs text-red-400/90">Transaction reverted on chain.</p>
+              )}
             </div>
-
-            {isConfirming && (
-              <div className="h-1 w-full max-w-sm animate-pulse rounded-sm bg-[#262626]" title="Transaction confirming" />
-            )}
-            {displayTxError && (
-              <p className="whitespace-pre-wrap break-words font-mono text-xs text-red-400/90">
-                {formatTxError(displayTxError)}
-              </p>
-            )}
-            {reverted && !displayTxError && (
-              <p className="font-mono text-xs text-red-400/90">Transaction reverted on chain.</p>
-            )}
           </div>
         )}
 

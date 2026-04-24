@@ -13,7 +13,7 @@ export function WalletCta({ title, body, className }: Props) {
   return (
     <div
       className={cn(
-        "max-w-md rounded-sm border border-[#333] bg-[#111] p-4 text-left",
+        "max-w-md rounded-sm border border-[#262626] bg-[#0d0d0d] p-5 text-left",
         className,
       )}
     >

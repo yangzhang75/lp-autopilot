@@ -88,22 +88,24 @@ function ChartInner({ points }: { points: CumulativeFeePoint[] }) {
 export function DashboardFeeChart({ points, loading }: Props) {
   if (loading) {
     return (
-      <div className="h-56 w-full max-w-4xl rounded-sm border border-[#262626] bg-[#0d0d0d] animate-pulse" />
+      <div className="h-56 w-full animate-pulse rounded-sm border border-[#262626] bg-[#080808]" />
     );
   }
   return (
-    <div className="w-full max-w-4xl">
-      <div className="mb-1.5 flex items-center gap-1.5">
-        <h3 className="font-mono text-xs uppercase tracking-wide text-[#a3a3a3]">
-          Cumulative fees (USD) from rebalances
+    <div className="w-full">
+      <div className="mb-3 flex items-center gap-1.5">
+        <h3 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+          Cumulative fees (USD)
         </h3>
         <TipIcon />
-        <span className="ml-auto font-mono text-[10px] text-[#555]">X: time since deposit · IL not shown</span>
+        <span className="ml-auto font-mono text-[10px] text-[#555]">time since deposit · IL not shown</span>
       </div>
       {points.length === 0 ? (
-        <p className="font-mono text-xs text-[#666]">No fee history yet.</p>
+        <div className="flex h-56 items-center justify-center rounded-sm border border-dashed border-[#262626]">
+          <p className="font-mono text-xs text-[#666]">No fee history yet.</p>
+        </div>
       ) : (
-        <div className="h-56 w-full rounded-sm border border-[#262626] bg-[#0d0d0d] p-1">
+        <div className="h-56 w-full rounded-sm border border-[#262626] bg-[#080808] p-1">
           <ChartInner points={points} />
         </div>
       )}
