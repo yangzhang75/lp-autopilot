@@ -6,6 +6,7 @@ import "./globals.css";
 import "@rainbow-me/rainbowkit/styles.css";
 import { cn } from "@/lib/utils";
 import { getSiteUrl } from "@/lib/site";
+import { SiteFooter } from "@/components/site-footer";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -55,7 +56,12 @@ export default function RootLayout({
           "min-h-screen bg-[#0a0a0a] font-sans text-[#ededed] antialiased",
         )}
       >
-        <Web3Providers>{children}</Web3Providers>
+        <Web3Providers>
+          <div className="flex min-h-screen flex-col">
+            {children}
+            <SiteFooter />
+          </div>
+        </Web3Providers>
       </body>
     </html>
   );
