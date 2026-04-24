@@ -22,6 +22,7 @@ import { readNpmPositionTuple } from "@/lib/read-npm-position";
 import { formatTxError } from "@/lib/tx-error";
 import { WalletCta } from "@/components/wallet-cta";
 import { WrongNetworkBanner } from "@/components/wrong-network-banner";
+import { TxPendingLabel } from "@/components/tx-pending-label";
 
 // shared tuple reader — inline minimal import
 function useParseTokenId() {
@@ -250,7 +251,13 @@ export default function DepositPage() {
                 onClick={onApprove}
                 disabled={!isAutopilotConfigured || wrongNetwork || approved || busy || rangeTicks === null}
               >
-                {approved ? "Autopilot can move this NFT" : busy && pending === "approve" ? "Approving…" : "Approve Autopilot on NFT"}
+                {approved ? (
+                  "Autopilot can move this NFT"
+                ) : busy && pending === "approve" ? (
+                  <TxPendingLabel label="Approving" />
+                ) : (
+                  "Approve Autopilot on NFT"
+                )}
               </Button>
 
               <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">Step 2</p>
@@ -260,7 +267,11 @@ export default function DepositPage() {
                 onClick={onDeposit}
                 disabled={!isAutopilotConfigured || wrongNetwork || !approved || busy || rangeTicks === null}
               >
-                {busy && pending === "deposit" ? (isConfirming ? "Confirming…" : "Depositing…") : "Deposit to Autopilot"}
+                {busy && pending === "deposit" ? (
+                  <TxPendingLabel label={isConfirming ? "Confirming" : "Depositing"} />
+                ) : (
+                  "Deposit to Autopilot"
+                )}
               </Button>
             </div>
 
