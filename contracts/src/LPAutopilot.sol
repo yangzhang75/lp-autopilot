@@ -157,12 +157,59 @@ contract LPAutopilot is IERC721Receiver, ReentrancyGuard {
 
         positionManager.burn(oldNftId);
 
-        p.nftId = 0;
+        // Re-read pool tick after liquidity removal; mint math must match live pool price/reserves.
+        (, currentTick,,,,,) = IUniswapV3Pool(pool).slot0();
+
+        int24 tickSpacing = IUniswapV3Pool(pool).tickSpacing();
+        int24 newLower = _floorTick(currentTick - p.rangeTicks, tickSpacing);
+        int24 newUpper = _ceilTick(currentTick + p.rangeTicks, tickSpacing);
+
+        int256 minTick = -887_272;
+        int256 maxTick = 887_272;
+        if (int256(newLower) < minTick) newLower = int24(minTick);
+        if (int256(newUpper) > maxTick) newUpper = int24(maxTick);
+        if (newLower >= newUpper) revert InvalidRange();
+
+        if (c0 > 0) IERC20(p.token0).forceApprove(address(positionManager), c0);
+        if (c1 > 0) IERC20(p.token1).forceApprove(address(positionManager), c1);
+
+        (uint256 newTokenId,, uint256 used0, uint256 used1) = positionManager.mint(
+            INonfungiblePositionManager.MintParams({
+                token0: p.token0,
+                token1: p.token1,
+                fee: p.fee,
+                tickLower: newLower,
+                tickUpper: newUpper,
+                amount0Desired: c0,
+                amount1Desired: c1,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: address(this),
+                deadline: deadline
+            })
+        );
+
+        if (c0 > 0) IERC20(p.token0).forceApprove(address(positionManager), 0);
+        if (c1 > 0) IERC20(p.token1).forceApprove(address(positionManager), 0);
+
+        p.nftId = newTokenId;
         p.centerTick = currentTick;
-        p.pending0 += c0;
-        p.pending1 += c1;
+        p.pending0 += (c0 - used0);
+        p.pending1 += (c1 - used1);
 
         emit RebalanceTriggered(tokenId, oldNftId, oldCenter, currentTick, c0, c1);
+    }
+
+    function _floorTick(int24 tick, int24 spacing) internal pure returns (int24) {
+        int24 rounded = (tick / spacing) * spacing;
+        if (tick < 0 && tick % spacing != 0) rounded -= spacing;
+        return rounded;
+    }
+
+    function _ceilTick(int24 tick, int24 spacing) internal pure returns (int24) {
+        int24 rounded = (tick / spacing) * spacing;
+        if (rounded < tick) rounded += spacing;
+        return rounded;
     }
 
     /// @notice Return any pending ERC20s to the position owner, and the NFT to the owner if one is still active.

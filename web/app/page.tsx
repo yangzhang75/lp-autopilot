@@ -3,16 +3,12 @@
 import Link from "next/link";
 import { ArrowRight, RefreshCw, Shield, Wallet, Workflow } from "lucide-react";
 import { AppHeader } from "@/components/app-header";
+import { LiveOnchainActivity } from "@/components/live-onchain-activity";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WrongNetworkBanner } from "@/components/wrong-network-banner";
 import { useAutopilotGlobalStats } from "@/lib/hooks/useAutopilotGlobalStats";
-import { isAutopilotConfigured, lpAutopilotAddress } from "@/lib/contract";
-import { GITHUB_URL, getSiteUrl } from "@/lib/site";
-import { arbitrumSepolia } from "wagmi/chains";
-
-const ARBISCAN_ADDR = (a: `0x${string}`) =>
-  `https://sepolia.arbiscan.io/address/${a}`;
+import { isAutopilotConfigured } from "@/lib/contract";
 
 function Steps() {
   return (
@@ -81,7 +77,6 @@ function Why() {
 
 export default function Home() {
   const { data: stats, isLoading: statsLoad } = useAutopilotGlobalStats();
-  const site = getSiteUrl();
   return (
     <div className="flex min-h-screen flex-col">
       <AppHeader />
@@ -93,23 +88,39 @@ export default function Home() {
           </h1>
           <p className="max-w-2xl text-sm leading-relaxed text-[#a3a3a3]">
             Set a range rule once. Anyone can trigger rebalances when conditions are met. You keep
-            custody. All onchain on Arbitrum{/* Sepolia in practice for the demo */}.
+            custody. All onchain on Arbitrum Sepolia for the demo.
           </p>
-          <p className="text-xs text-[#666]">Network: {arbitrumSepolia.name} (testnet for demo)</p>
-          <div className="flex flex-wrap items-center gap-3 pt-1">
+          <p className="max-w-2xl text-xs leading-relaxed text-[#888]">
+            See it in action without deposits — or connect your wallet to use the real product.
+          </p>
+          <div className="flex flex-wrap items-center gap-3 pt-2">
             <Link
-              href="/positions"
+              href="/demo"
               className={cn(
                 buttonVariants({ size: "lg" }),
                 "h-10 gap-1.5 px-5 font-mono text-sm text-[#0a0a0a] bg-[#00ff88] hover:bg-[#00dd77]",
               )}
             >
-              Launch app
+              View Live Demo
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <p className="w-full text-xs text-[#666] sm:w-auto">Use the connect control in the header to sign.</p>
+            <Link
+              href="/positions"
+              className={cn(
+                buttonVariants({ size: "lg", variant: "outline" }),
+                "h-10 border-[#262626] bg-transparent px-5 font-mono text-sm text-[#ededed] hover:bg-[#141414]",
+              )}
+            >
+              My Positions
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <p className="w-full text-xs text-[#666] sm:w-auto">
+              Use the connect control in the header to sign on real flows.
+            </p>
           </div>
         </section>
+
+        <LiveOnchainActivity />
 
         {isAutopilotConfigured && (
           <section className="grid gap-3 rounded-sm border border-[#262626] bg-[#0d0d0d] p-4 sm:grid-cols-3">
@@ -149,35 +160,6 @@ export default function Home() {
           </div>
         </section>
       </main>
-      <footer className="mt-auto border-t border-[#262626] bg-[#0a0a0a] px-3 py-6 text-xs text-[#666]">
-        <div className="mx-auto flex max-w-4xl flex-col justify-between gap-3 sm:flex-row sm:items-end">
-          <div className="space-y-1.5">
-            <a className="text-[#a3a3a3] hover:text-[#ededed]" href={GITHUB_URL}>
-              GitHub
-            </a>
-            {isAutopilotConfigured ? (
-              <p>
-                <span className="text-[#666]">Contract </span>
-                <a
-                  className="break-all font-mono text-[#888] hover:text-[#a3a3a3]"
-                  href={ARBISCAN_ADDR(lpAutopilotAddress)}
-                >
-                  {lpAutopilotAddress}
-                </a>
-              </p>
-            ) : (
-              <p className="text-amber-200/80">Set NEXT_PUBLIC_LP_AUTOPILOT_ADDRESS for a contract link.</p>
-            )}
-            <p>
-              <span className="text-[#666]">Site </span>
-              <a className="text-[#888] hover:text-[#a3a3a3]" href={site}>
-                {site}
-              </a>
-            </p>
-            <p className="text-[#555]">Built for MSX Hackathon 2026</p>
-          </div>
-        </div>
-      </footer>
     </div>
   );
 }

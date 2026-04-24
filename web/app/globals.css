@@ -8,6 +8,20 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  @keyframes demo-pulse-green {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .demo-pulse-dot {
+    animation: demo-pulse-green 2s ease-in-out infinite;
+  }
 }
 
 @layer base {
