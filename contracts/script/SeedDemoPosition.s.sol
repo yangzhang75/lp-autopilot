@@ -45,12 +45,15 @@ contract SeedDemoScript is Script {
     int24 internal constant RANGE_HALF_TICKS = 2000;
 
     function run() external {
+        uint256 pk = vm.envUint("PRIVATE_KEY");
+        address user = vm.addr(pk);
+
         IUniswapV3Factory factory = IUniswapV3Factory(FACTORY);
         INonfungiblePositionManager npm = INonfungiblePositionManager(NPM);
         IWETH9 weth = IWETH9(WETH_GUESS);
         ILPAutopilot autopilot = ILPAutopilot(AUTOPILOT);
 
-        vm.startBroadcast(uint256(vm.envUint("PRIVATE_KEY")));
+        vm.startBroadcast(pk);
 
         (address poolAddr, uint24 feeTier) = _findPool(factory, USDC, WETH_GUESS);
         require(poolAddr != address(0), unicode"NO_POOL_FOUND \u2014 pair not tradable on Arbitrum Sepolia Uniswap v3");
@@ -62,22 +65,26 @@ contract SeedDemoScript is Script {
         console2.log("Detected pool:", poolAddr);
         console2.log("fee:", uint256(feeTier));
         console2.log("current tick:", int256(currentTick));
+        console2.log("broadcasting user:", user);
 
-        uint256 wethBefore = weth.balanceOf(msg.sender);
+        uint256 wethBefore = weth.balanceOf(user);
         console2.log("WETH balance before wrap:", wethBefore);
         if (wethBefore == 0) {
             weth.deposit{value: 0.008 ether}();
         }
-        uint256 wethAfter = weth.balanceOf(msg.sender);
+        uint256 wethAfter = weth.balanceOf(user);
         console2.log("WETH balance after wrap:", wethAfter);
 
+        uint256 usdcBal = IERC20(USDC).balanceOf(user);
+        console2.log("USDC balance (raw, 6 decimals):", usdcBal);
+
         (address token0, address token1) = USDC < WETH_GUESS ? (USDC, WETH_GUESS) : (WETH_GUESS, USDC);
-        uint256 bal0 = IERC20(token0).balanceOf(msg.sender);
-        uint256 bal1 = IERC20(token1).balanceOf(msg.sender);
+        uint256 bal0 = IERC20(token0).balanceOf(user);
+        uint256 bal1 = IERC20(token1).balanceOf(user);
         require(bal0 > 0 || bal1 > 0, "SeedDemo: no token balances to mint with");
 
-        _maxApprove(IERC20(token0), NPM, bal0);
-        _maxApprove(IERC20(token1), NPM, bal1);
+        _maxApprove(IERC20(token0), NPM, user, bal0);
+        _maxApprove(IERC20(token1), NPM, user, bal1);
         console2.log("Approvals set");
 
         int24 tickLower = _floorTick(currentTick - RANGE_HALF_TICKS, tickSpacing);
@@ -95,7 +102,7 @@ contract SeedDemoScript is Script {
                 amount1Desired: bal1,
                 amount0Min: 0,
                 amount1Min: 0,
-                recipient: msg.sender,
+                recipient: user,
                 deadline: block.timestamp + 600
             })
         );
@@ -123,7 +130,7 @@ contract SeedDemoScript is Script {
             /* pending1 */
         ) = autopilot.getPositionState(tokenId);
 
-        require(owner == msg.sender, "SeedDemo: owner mismatch after deposit");
+        require(owner == user, "SeedDemo: owner mismatch after deposit");
         require(activeNftId > 0, "SeedDemo: no active NFT in autopilot");
         require(inRange, "SeedDemo: not in range at deposit");
 
@@ -149,9 +156,9 @@ contract SeedDemoScript is Script {
         return (address(0), 0);
     }
 
-    function _maxApprove(IERC20 token, address spender, uint256 needed) internal {
+    function _maxApprove(IERC20 token, address spender, address owner_, uint256 needed) internal {
         if (needed == 0) return;
-        uint256 a = token.allowance(msg.sender, spender);
+        uint256 a = token.allowance(owner_, spender);
         if (a < needed) {
             require(token.approve(spender, type(uint256).max), "SeedDemo: approve failed");
         }
