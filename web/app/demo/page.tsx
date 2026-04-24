@@ -278,17 +278,21 @@ export default function DemoPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#0a0a0a]">
       <AppHeader />
-      <main className="mx-auto w-full max-w-4xl flex-1 space-y-8 px-3 py-6">
-        <div
-          className="rounded-sm border border-[#262626] bg-[#141414] px-3 py-2 font-mono text-xs text-[#a3a3a3]"
-          role="status"
-        >
-          DEMO MODE — showing simulated position data. Connect your wallet and deposit a real Uniswap v3
-          NFT to see your own dashboard.
+      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-3 py-6 md:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="demo-pulse-dot h-1.5 w-1.5 rounded-full bg-[#00ff88]" aria-hidden />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+              Live simulation
+            </span>
+          </div>
+          <p className="font-mono text-[11px] text-[#666]">
+            Simulated data. Connect a wallet and deposit a real LP NFT for live onchain state.
+          </p>
         </div>
 
-        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4 transition-colors">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
+        <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5 transition-colors">
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
             Demo controls
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -335,14 +339,14 @@ export default function DemoPage() {
 
         <section
           className={cn(
-            "space-y-4 rounded-sm border border-[#262626] bg-[#141414] p-4 transition-[border-color,background-color] duration-300",
+            "space-y-4 rounded-sm border border-[#262626] bg-[#0d0d0d] p-5 transition-[border-color,background-color] duration-300",
             statusFlash && "demo-status-flash",
           )}
         >
-          <div className="flex flex-col gap-2 border-b border-[#262626] pb-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-2 border-b border-[#1f1f1f] pb-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-widest text-[#666]">Status</p>
-              <h1 className="font-mono text-2xl font-semibold tracking-tight text-[#ededed] md:text-4xl">
+              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">Status</p>
+              <h1 className="mt-1 font-mono text-2xl font-semibold tracking-tight text-[#ededed] md:text-4xl">
                 Position #{pos.tokenId}{" "}
                 <span className={statusColor}>— {statusLabel}</span>
               </h1>
@@ -376,22 +380,24 @@ export default function DemoPage() {
 
         {pos.status === "WITHDRAWN" && (
           <div
-            className="rounded-sm border border-[#262626] bg-[#141414] px-3 py-2 font-mono text-sm text-[#a3a3a3]"
+            className="rounded-sm border border-[#262626] bg-[#0d0d0d] px-3 py-2 font-mono text-sm text-[#a3a3a3]"
             role="status"
           >
             Position withdrawn. Tokens returned to your wallet.
           </div>
         )}
 
-        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
-            Range visualization
-          </h2>
+        <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+              Range visualization
+            </h2>
+            <span className="font-mono text-[10px] text-[#555]">
+              price vs. autopilot band (USD, illustrative)
+            </span>
+          </div>
           <div className="w-full">
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-[#666]">
-              Price vs. autopilot band (USD, illustrative)
-            </p>
-            <div className="relative h-14 w-full max-w-3xl border border-[#262626] bg-[#0d0d0d]">
+            <div className="relative h-12 w-full border border-[#262626] bg-[#080808]">
               <div
                 className="absolute bottom-2 top-2 bg-[rgba(255,68,68,0.35)] transition-all duration-300"
                 style={{ left: 0, width: `${Math.max(0, pLo)}%` }}
@@ -416,11 +422,14 @@ export default function DemoPage() {
           </div>
         </section>
 
-        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
-            Fee accumulation (simulated)
-          </h2>
-          <div className="h-64 w-full rounded-sm border border-[#262626] bg-[#0d0d0d] p-1">
+        <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+              Fee accumulation
+            </h2>
+            <span className="font-mono text-[10px] text-[#555]">cumulative USD (simulated)</span>
+          </div>
+          <div className="h-56 w-full rounded-sm border border-[#262626] bg-[#080808] p-1">
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <LineChart data={chartPoints} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
                 <CartesianGrid stroke="#262626" strokeDasharray="4 4" />
@@ -467,14 +476,14 @@ export default function DemoPage() {
           </p>
         </section>
 
-        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">
+        <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
             Event timeline
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left font-mono text-xs">
               <thead>
-                <tr className="border-b border-[#262626] text-[#666]">
+                <tr className="border-b border-[#262626] text-[10px] uppercase tracking-wide text-[#666]">
                   <th className="py-2 pr-3 font-medium">Event</th>
                   <th className="py-2 pr-3 font-medium">When</th>
                   <th className="py-2 pr-3 font-medium">Detail</th>
@@ -486,14 +495,14 @@ export default function DemoPage() {
                   <tr
                     key={e.id}
                     className={cn(
-                      "border-b border-[#1a1a1a] transition-colors duration-300",
+                      "border-b border-[#1a1a1a] transition-colors duration-150 hover:bg-[#141414]",
                       highlightEventId === e.id && "demo-new-event-row",
                     )}
                   >
-                    <td className="py-2 pr-3 text-[#ededed]">{e.type}</td>
-                    <td className="py-2 pr-3 tabular-nums text-[#a3a3a3]">{e.when}</td>
-                    <td className="py-2 pr-3 text-[#888]">{e.detail}</td>
-                    <td className="py-2 text-right">
+                    <td className="py-1.5 pr-3 text-[#ededed]">{e.type}</td>
+                    <td className="py-1.5 pr-3 tabular-nums text-[#a3a3a3]">{e.when}</td>
+                    <td className="py-1.5 pr-3 text-[#888]">{e.detail}</td>
+                    <td className="py-1.5 text-right">
                       <a
                         className="break-all text-[#888] transition-colors hover:text-[#00ff88]"
                         href={ARBISCAN_TX(e.txHash)}
@@ -510,8 +519,10 @@ export default function DemoPage() {
           </div>
         </section>
 
-        <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
-          <h2 className="mb-3 font-mono text-xs uppercase tracking-widest text-[#666]">Actions</h2>
+        <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
+          <h2 className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+            Actions
+          </h2>
           <div className="flex max-w-md flex-col gap-2">
             <span
               title={
@@ -533,7 +544,7 @@ export default function DemoPage() {
                     : "text-[#666] opacity-50",
                 )}
               >
-                Trigger Rebalance
+                Rebalance now
               </Button>
             </span>
             <span
@@ -550,13 +561,13 @@ export default function DemoPage() {
                 onClick={onWithdraw}
                 className="h-9 w-full max-w-xs border-[#262626] font-mono text-xs text-[#ededed] transition-colors hover:border-[#ededed] hover:bg-[#1a1a1a] disabled:opacity-40"
               >
-                Withdraw
+                Withdraw position
               </Button>
             </span>
             <p className="mt-2 max-w-md font-mono text-[11px] leading-relaxed text-[#888]">
-              Real mode requires a Uniswap v3 position on your wallet. See the{" "}
+              Real mode requires a Uniswap v3 position NFT. See the{" "}
               <a
-                className="text-[#00ff88] underline decoration-[#333] underline-offset-2 transition-colors hover:text-[#00dd77]"
+                className="text-[#00ff88] underline decoration-[#333] underline-offset-2 transition-colors hover:decoration-[#00ff88]"
                 href={arbHref}
                 target="_blank"
                 rel="noreferrer"
@@ -584,11 +595,16 @@ function Metric({
   className?: string;
 }) {
   return (
-    <div className={cn("border border-[#262626] bg-[#0d0d0d] p-3 text-right", className)}>
-      <p className="text-[10px] font-mono uppercase tracking-wide text-[#666]">{label}</p>
+    <div
+      className={cn(
+        "rounded-sm border border-[#262626] bg-[#080808] p-3 text-right transition-colors hover:border-[#333]",
+        className,
+      )}
+    >
+      <p className="font-mono text-[10px] uppercase tracking-wide text-[#666]">{label}</p>
       <p
         className={cn(
-          "mt-1 font-mono text-lg tabular-nums text-[#ededed] md:text-xl",
+          "mt-1 font-mono text-lg tabular-nums tracking-tight text-[#ededed] md:text-xl",
           accent,
         )}
       >

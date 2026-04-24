@@ -38,18 +38,18 @@ export function LiveOnchainActivity() {
   }
 
   return (
-    <section className="rounded-sm border border-[#262626] bg-[#141414] p-4">
-      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="font-mono text-xs uppercase tracking-widest text-[#666]">
+    <section className="rounded-sm border border-[#262626] bg-[#0d0d0d] p-5">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
           Live onchain activity
         </h2>
         <a
-          className="font-mono text-[10px] text-[#888] hover:text-[#00ff88]"
+          className="font-mono text-[10px] uppercase tracking-wide text-[#666] transition-colors hover:text-[#00ff88]"
           href={ARBISCAN_ADDR(lpAutopilotAddress)}
           target="_blank"
           rel="noreferrer"
         >
-          View contract on Arbiscan
+          View on Arbiscan ↗
         </a>
       </div>
 
@@ -66,20 +66,12 @@ export function LiveOnchainActivity() {
       )}
 
       {!isLoading && !isError && data && data.length === 0 && (
-        <div className="rounded-sm border border-[#262626] bg-[#0d0d0d] px-3 py-4 text-center">
+        <div className="rounded-sm border border-dashed border-[#262626] px-4 py-6 text-center">
           <p className="font-mono text-sm text-[#a3a3a3]">
             Contract deployed at{" "}
-            <span className="text-[#ededed]">{shortContract(lpAutopilotAddress)}</span>. Waiting for
-            first position.
+            <span className="font-mono text-[#ededed]">{shortContract(lpAutopilotAddress)}</span>.
+            Waiting for first position.
           </p>
-          <a
-            className="mt-2 inline-block font-mono text-xs text-[#00ff88] hover:underline"
-            href={ARBISCAN_ADDR(lpAutopilotAddress)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View on Arbiscan
-          </a>
         </div>
       )}
 
@@ -87,16 +79,19 @@ export function LiveOnchainActivity() {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left font-mono text-[11px]">
             <thead>
-              <tr className="border-b border-[#262626] text-[#666]">
-                <th className="py-1.5 pr-3 font-medium">Tx</th>
-                <th className="py-1.5 pr-3 font-medium">Event</th>
-                <th className="py-1.5 pr-3 font-medium text-right">Time</th>
-                <th className="py-1.5 font-medium text-right">tokenId</th>
+              <tr className="border-b border-[#262626] text-[10px] uppercase tracking-wide text-[#666]">
+                <th className="py-2 pr-3 font-medium">Tx</th>
+                <th className="py-2 pr-3 font-medium">Event</th>
+                <th className="py-2 pr-3 font-medium text-right">Time</th>
+                <th className="py-2 font-medium text-right">tokenId</th>
               </tr>
             </thead>
             <tbody>
               {data.map((row) => (
-                <tr key={`${row.txHash}-${row.logIndex}`} className="border-b border-[#1a1a1a]">
+                <tr
+                  key={`${row.txHash}-${row.logIndex}`}
+                  className="border-b border-[#1a1a1a] transition-colors hover:bg-[#141414]"
+                >
                   <td className="py-1.5 pr-3 tabular-nums">
                     <TxHashLink hash={row.txHash} href={ARBISCAN_TX(row.txHash)}>
                       {shortHash(row.txHash)}

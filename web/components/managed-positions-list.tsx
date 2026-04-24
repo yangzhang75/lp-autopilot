@@ -46,8 +46,12 @@ export function ManagedPositionsList() {
   }
 
   return (
-    <section className="mt-8 border-t border-[#262626] pt-6">
-      <h2 className="mb-3 font-mono text-sm text-[#a3a3a3]">Managed by Autopilot</h2>
+    <section className="border-t border-[#262626] pt-6">
+      <div className="mb-3 flex items-baseline justify-between gap-2">
+        <h2 className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#888]">
+          Managed by Autopilot
+        </h2>
+      </div>
 
       {!isConnected && (
         <p className="font-mono text-xs text-[#666]">
@@ -61,9 +65,9 @@ export function ManagedPositionsList() {
       )}
 
       {isConnected && onArbSepolia && isLoading && (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 2 }).map((_, i) => (
-            <Card key={i} className="border-[#262626] bg-[#111]">
+            <Card key={i} className="border-[#262626] bg-[#0d0d0d]">
               <CardHeader className="pb-2">
                 <SkeletonLine className="h-3 w-1/2" />
               </CardHeader>
@@ -78,7 +82,7 @@ export function ManagedPositionsList() {
       )}
 
       {isConnected && onArbSepolia && isError && (
-        <p className="font-mono text-xs text-red-400">
+        <p className="font-mono text-xs text-red-400/90">
           {error instanceof Error ? error.message : "Failed to load managed positions."}
         </p>
       )}
@@ -89,9 +93,10 @@ export function ManagedPositionsList() {
         !isError &&
         active.length === 0 &&
         withdrawn.length === 0 && (
-        <div className="max-w-md rounded-sm border border-[#262626] bg-[#111] p-4">
-          <p className="font-mono text-sm text-[#a3a3a3]">
-            No managed positions yet — deposit one above
+        <div className="max-w-md rounded-sm border border-dashed border-[#262626] p-5">
+          <p className="font-mono text-sm text-[#a3a3a3]">No managed positions yet.</p>
+          <p className="mt-1 text-xs leading-relaxed text-[#666]">
+            Deposit one of your wallet NFTs above to start automated rebalancing.
           </p>
         </div>
       )}
@@ -101,12 +106,12 @@ export function ManagedPositionsList() {
         !isLoading &&
         !isError &&
         active.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {active.map((p) => (
             <Card
               key={p.tokenId.toString()}
               className={cn(
-                "border-[#262626] bg-[#111] transition-all duration-150 ease-out",
+                "border-[#262626] bg-[#0d0d0d] transition-all duration-150 ease-out",
                 "hover:-translate-y-px hover:border-[#00ff88]",
                 isFetching && "opacity-90",
               )}
@@ -147,11 +152,11 @@ export function ManagedPositionsList() {
                   <Link
                     className={cn(
                       buttonVariants({ size: "sm" }),
-                      "w-full h-8 justify-center font-mono text-xs bg-[#00ff88] text-black hover:bg-[#00ff88]/90",
+                      "h-8 w-full justify-center bg-[#00ff88] font-mono text-xs text-[#0a0a0a] hover:bg-[#00dd77]",
                     )}
                     href={`/dashboard/${p.tokenId.toString()}`}
                   >
-                    Open Dashboard →
+                    Open dashboard →
                   </Link>
                 </div>
               </CardContent>
