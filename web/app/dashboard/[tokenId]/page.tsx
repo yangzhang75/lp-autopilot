@@ -20,6 +20,8 @@ import { formatTxError } from "@/lib/tx-error";
 import { erc20SymbolDecimalsAbi } from "@/lib/abis/erc20";
 import { formatPrice1Per0Label, formatTokenAmountString } from "@/lib/uniswap-math";
 import { ONCHAIN_POLL_MS } from "@/lib/addresses";
+import { TxHashLink } from "@/components/tx-hash-link";
+import { TxPendingLabel } from "@/components/tx-pending-label";
 
 const ARBISCAN = "https://sepolia.arbiscan.io";
 
@@ -304,33 +306,43 @@ export default function DashboardPage() {
               <div className="border border-[#262626] bg-[#111] p-2">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Status</p>
                 {isExited ? (
-                  <p className="mt-0.5 font-mono text-lg text-amber-200/90">EXITED (v1)</p>
+                  <p className="mt-0.5 font-mono text-3xl font-medium tabular-nums tracking-tight text-amber-200/90">
+                    EXITED (v1)
+                  </p>
                 ) : inRange ? (
-                  <p className="mt-0.5 font-mono text-lg text-[#00ff88]">IN RANGE</p>
+                  <p className="badge-in-range-glow mt-0.5 inline-block rounded-sm font-mono text-3xl font-medium tabular-nums tracking-tight text-[#00ff88]">
+                    IN RANGE
+                  </p>
                 ) : (
-                  <p className="mt-0.5 font-mono text-lg text-red-400/90">OUT OF RANGE</p>
+                  <p className="badge-out-range-glow mt-0.5 inline-block rounded-sm font-mono text-3xl font-medium tabular-nums tracking-tight text-red-400/90">
+                    OUT OF RANGE
+                  </p>
                 )}
               </div>
               <div className="border border-[#262626] bg-[#111] p-2 text-right">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Current price</p>
-                <p className="mt-0.5 font-mono text-xs text-[#ededed] break-all text-right leading-tight">{currentPriceLabel}</p>
+                <p className="mt-0.5 font-mono text-3xl tabular-nums tracking-tight text-[#ededed] break-all text-right leading-none">
+                  {currentPriceLabel}
+                </p>
                 <p className="mt-0.5 text-[10px] text-[#666] tabular-nums">tick {positionState.currentTick}</p>
               </div>
               <div className="border border-[#262626] bg-[#111] p-2 text-right">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Center</p>
-                <p className="mt-0.5 font-mono text-xs text-[#ededed] break-all text-right leading-tight">{centerPriceLabel}</p>
+                <p className="mt-0.5 font-mono text-3xl tabular-nums tracking-tight text-[#ededed] break-all text-right leading-none">
+                  {centerPriceLabel}
+                </p>
                 <p className="mt-0.5 text-[10px] text-[#666] tabular-nums">tick {positionState.centerTick}</p>
               </div>
               <div className="border border-[#262626] bg-[#111] p-2 text-right">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Drift</p>
-                <p className="mt-0.5 font-mono text-sm">
+                <p className="mt-0.5 font-mono text-3xl tabular-nums tracking-tight">
                   <DriftValue d={drift} />
                 </p>
                 <p className="mt-0.5 text-[10px] text-[#666]">from center, price</p>
               </div>
               <div className="border border-[#262626] bg-[#111] p-2 text-right sm:col-span-2 lg:col-span-1">
                 <p className="text-[10px] font-mono uppercase text-[#666]">Total fees earned (est. USD)</p>
-                <p className="mt-0.5 font-mono text-lg text-[#ededed] tabular-nums">
+                <p className="mt-0.5 font-mono text-3xl text-[#ededed] tabular-nums tracking-tight">
                   {evLoading ? "—" : "$" + feeSeries.totalFeesUsd.toFixed(2)}
                 </p>
                 {feeSeries.hasPriceUnknown && !evLoading && (
@@ -356,7 +368,7 @@ export default function DashboardPage() {
                 inRange={inBand}
               />
               <div className="flex flex-col justify-end gap-1">
-                <p className="text-[10px] font-mono text-[#666]">Rebalance (v1 = exit to ERC20s)</p>
+                <p className="text-[10px] font-mono text-[#666]">Atomic rebalance (exit + re-mint)</p>
                 <Button
                   type="button"
                   className="h-8 w-full max-w-xs font-mono text-xs"
@@ -365,8 +377,15 @@ export default function DashboardPage() {
                   }
                   onClick={onRebalance}
                 >
-                  {busy ? "Transaction…" : "Rebalance now"}
+                  {busy ? <TxPendingLabel label="Sending transaction" /> : "Rebalance now"}
                 </Button>
+                {inRange && hasActiveNft && !isExited && (
+                  <p className="mt-2 text-xs leading-relaxed text-[#888]">
+                    Position is within range — no rebalance needed. When price drifts beyond ±
+                    {positionState.rangeTicks} ticks, this button unlocks and anyone can trigger the atomic exit +
+                    re-mint.
+                  </p>
+                )}
                 <p className="text-[10px] text-[#666]">Only when out of band. Anyone can call; you pay gas.</p>
                 <Button
                   type="button"
@@ -375,9 +394,12 @@ export default function DashboardPage() {
                   disabled={!isAutopilotConfigured || wrongNetwork || busy || !isConnected || !isOwner}
                   onClick={onWithdraw}
                 >
-                  {busy ? "Transaction…" : "Withdraw position"}
+                  {busy ? <TxPendingLabel label="Sending transaction" /> : "Withdraw position"}
                 </Button>
-                <p className="text-[10px] text-[#666]">Returns the NFT (if any) and pending ERC20s to your wallet.</p>
+                <p className="text-[10px] leading-relaxed text-[#666]">
+                  Exits your position for good: withdraws the NFT + any collected fees + pending tokens back to your
+                  wallet. This closes your Autopilot management.
+                </p>
                 {displayTxError && (
                   <p className="whitespace-pre-wrap break-words font-mono text-[10px] text-red-400/90">
                     {formatTxError(displayTxError)}
@@ -426,14 +448,7 @@ export default function DashboardPage() {
                                 : "PositionWithdrawn"}
                           </td>
                           <td className="py-1 text-right text-[#888]">
-                            <a
-                              className="break-all text-[#888] underline decoration-[#333] hover:text-[#a3a3a3]"
-                              href={`${ARBISCAN}/tx/${e.transactionHash}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {e.transactionHash}
-                            </a>
+                            <TxHashLink hash={e.transactionHash} href={`${ARBISCAN}/tx/${e.transactionHash}`} />
                           </td>
                         </tr>
                       ))}

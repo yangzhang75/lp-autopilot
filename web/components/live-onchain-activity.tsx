@@ -6,6 +6,7 @@ import { arbitrumSepolia } from "wagmi/chains";
 import { getRecentGlobalActivity } from "@/lib/events";
 import { isAutopilotConfigured, lpAutopilotAddress } from "@/lib/contract";
 import { ONCHAIN_POLL_MS } from "@/lib/addresses";
+import { TxHashLink } from "@/components/tx-hash-link";
 
 const ARBISCAN_TX = (h: string) => `https://sepolia.arbiscan.io/tx/${h}`;
 const ARBISCAN_ADDR = (a: `0x${string}`) =>
@@ -97,14 +98,9 @@ export function LiveOnchainActivity() {
               {data.map((row) => (
                 <tr key={`${row.txHash}-${row.logIndex}`} className="border-b border-[#1a1a1a]">
                   <td className="py-1.5 pr-3 tabular-nums">
-                    <a
-                      className="text-[#888] hover:text-[#ededed]"
-                      href={ARBISCAN_TX(row.txHash)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
+                    <TxHashLink hash={row.txHash} href={ARBISCAN_TX(row.txHash)}>
                       {shortHash(row.txHash)}
-                    </a>
+                    </TxHashLink>
                   </td>
                   <td className="py-1.5 pr-3 text-[#ededed]">{row.kind}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums text-[#a3a3a3]">

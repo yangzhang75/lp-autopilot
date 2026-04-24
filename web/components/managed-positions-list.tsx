@@ -106,7 +106,8 @@ export function ManagedPositionsList() {
             <Card
               key={p.tokenId.toString()}
               className={cn(
-                "border-[#262626] bg-[#111] transition-colors hover:border-[#333]",
+                "border-[#262626] bg-[#111] transition-all duration-150 ease-out",
+                "hover:-translate-y-px hover:border-[#00ff88]",
                 isFetching && "opacity-90",
               )}
             >
@@ -118,8 +119,8 @@ export function ManagedPositionsList() {
                   className={cn(
                     "shrink-0 rounded-sm px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide",
                     p.inRange
-                      ? "bg-[#00ff88]/15 text-[#00ff88]"
-                      : "bg-red-500/15 text-red-400",
+                      ? "badge-in-range-glow bg-[#00ff88]/15 text-[#00ff88]"
+                      : "badge-out-range-glow bg-red-500/15 text-red-400",
                   )}
                 >
                   {p.inRange ? "IN RANGE" : "OUT OF RANGE"}
