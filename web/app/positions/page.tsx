@@ -11,6 +11,7 @@ import { isAutopilotConfigured } from "@/lib/contract";
 import { UNISWAP_ARBITRUM_SEPOLIA_APP } from "@/lib/addresses";
 import { WalletCta } from "@/components/wallet-cta";
 import { WrongNetworkBanner } from "@/components/wrong-network-banner";
+import { ManagedPositionsList } from "@/components/managed-positions-list";
 
 function SkeletonLine({ className }: { className?: string }) {
   return <div className={`h-3 animate-pulse rounded-sm bg-[#262626] ${className ?? ""}`} />;
@@ -136,6 +137,7 @@ export default function PositionsPage() {
             ))}
           </div>
         )}
+        <ManagedPositionsList />
         {isConnected && address && (
           <p className="mt-3 font-mono text-[10px] text-[#555]">Wallet {address}</p>
         )}
